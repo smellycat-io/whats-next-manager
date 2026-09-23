@@ -26,6 +26,11 @@ android/
 cdk.out/
 .cdk.staging/
 
+# infra/ has no outDir set, so tsc compiles .js/.d.ts in place next to
+# the .ts sources (unlike backend/, which uses dist/ — see infra/tsconfig.json)
+infra/**/*.js
+infra/**/*.d.ts
+
 # Environment / secrets
 .env
 .env.*
