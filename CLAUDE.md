@@ -81,3 +81,16 @@ apply them, only flag if a specific task seems to require breaking one.
 - Confirm each function/class still has one clear job.
 - Confirm naming is honest — if a function's behavior grew past its name,
   rename it or split it.
+
+## Git workflow
+
+- Never commit directly on `main` or `stage`. If a task starts on either,
+  create a feature/working branch first (see `ARCHITECTURE.md`'s Deploy &
+  repo flow) before making any changes.
+- Commit completed units of work as you go rather than leaving them
+  uncommitted at the end of a session — split into multiple commits along
+  logical boundaries (e.g., infra vs. application code vs. docs) when the
+  work spans distinct concerns, one clear commit when it doesn't.
+- **Never merge a feature branch into `stage` or `main`, and never push to
+  either.** That merge is manual and belongs to the repo owner. Leave the
+  branch ready for review instead.
