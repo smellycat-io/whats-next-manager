@@ -6,14 +6,17 @@ PIN or any other project.
 
 **Product context:** intended for eventual App Store release to multiple
 users, with more complex features added over time — not just a personal
-single-user tool. This shapes decisions elsewhere in this doc (e.g.,
-Cognito is a real multi-tenant user pool from the start, not a
-single-user placeholder; infra-as-code choice below accounts for
-long-term growth).
+single-user tool. This includes real team collaboration (see
+`WORKSPACES.md`): a personal-use core plus shared Workspaces for
+multi-person collaboration, freemium (core features free, AI agent paid).
+This shapes decisions elsewhere in this doc (e.g., Cognito is a real
+multi-tenant user pool from the start, not a single-user placeholder;
+infra-as-code choice below accounts for long-term growth).
 
 For the DynamoDB schema and API endpoint list, see `DATA-MODEL.md`. For the
-Journal tab's AI agent design, see `AGENT.md`. This doc covers the stack,
-deploy flow, and each tab's behavioral design.
+Journal tab's AI agent design, see `AGENT.md`. For team collaboration and
+shared Life Areas, see `WORKSPACES.md`. This doc covers the stack, deploy
+flow, and each tab's behavioral design.
 
 ## Navigation (bottom tabs)
 
@@ -289,7 +292,28 @@ Two things side by side in this tab:
   events on request. Full agent design, tool access, and open questions
   are in `AGENT.md`.
 
-## Client
+## Repo structure — npm workspaces monorepo
+
+Two separate UI codebases share one data layer, structured as a light
+npm workspaces monorepo (built into npm — no Turborepo/Nx needed):
+
+```
+packages/
+  shared-types/   — TypeScript types matching every entity in DATA-MODEL.md
+  api-client/     — typed functions for every endpoint, used by both apps
+apps/
+  mobile/         — Expo (React Native + TypeScript)
+  web/            — Vite + React SPA
+backend/          — unchanged, own separate deployment
+infra/            — unchanged, own separate deployment
+```
+
+`shared-types` and `api-client` are the only shared code between the two
+UIs — this keeps the data layer DRY (matching `CLAUDE.md`) while letting
+mobile and web be genuinely independent UI codebases, each free to use
+whatever navigation/layout pattern fits its platform.
+
+## Client — Mobile (`apps/mobile`)
 
 - **Expo (React Native + TypeScript)** — single codebase for iOS/Android
 - **AsyncStorage** for offline-first local cache — schedule/budget/goals
@@ -298,29 +322,78 @@ Two things side by side in this tab:
   this size; revisit only if state complexity grows significantly
 - No shared component library yet — build reusable components locally
   (buttons, cards, rows) per the DRY/composition rules in `CLAUDE.md`
+- Uses `shared-types` and `api-client` from the monorepo rather than
+  duplicating type definitions or endpoint calls
+
+## Client — Web (`apps/web`)
+
+**Decision: a separate codebase from mobile**, not a shared Expo Web
+build — desktop UX (sidebar nav, wider layouts, mouse-native
+drag-and-drop for the Kanban view) is different enough from mobile to be
+worth its own UI, given how much this app is expected to keep growing.
+
+- **Vite + React (TypeScript)**, plain SPA — no server-rendering framework
+  (Next.js) needed, since this is an authenticated app with no public
+  pages requiring SEO. A static bundle keeps hosting simple.
+- **Hosting: S3 + CloudFront** — the same static-hosting pattern already
+  used on other projects, not a new pattern to learn
+- Uses the same `shared-types` and `api-client` packages as mobile — the
+  UI layer is separate, the data layer isn't
+- Navigation/layout is desktop-appropriate from the start (not a
+  responsive reflow of the mobile tab bar) — sidebar or top nav instead of
+  bottom tabs, wider multi-column layouts where it helps (e.g., Kanban)
 
 ## Backend
 
 - **API Gateway + Lambda** — Express app via `serverless-http`, same pattern
   used on other projects for familiarity, but its own separate deployment
+- **CORS enabled on API Gateway** — required now that a browser client
+  exists. Mobile apps aren't subject to browser same-origin policy, but
+  `apps/web` is — this is a real infra change to `api-construct.ts`, not
+  just a client-side concern.
 - **DynamoDB** — single-table design (full schema in `DATA-MODEL.md`)
 - **Cognito** — own user pool, separate from any other project's auth,
-  currently single-user but structured so it could scale to more users later
-  without a rebuild
-- **S3** — used only for exports (PDF/CSV budget or goal snapshots), not for
-  core app data
+  structured for real multi-tenant/team use from the start (see
+  `WORKSPACES.md`). **Two app clients** — one for mobile, one for web —
+  so each platform's access can be audited/revoked independently, even
+  though both are public clients with no secret and hit the same user
+  pool and API.
+- **S3** — used for exports (PDF/CSV budget or goal snapshots) and for
+  hosting the built `apps/web` static bundle behind CloudFront
 
 ## Deploy & repo flow
 
 - GitHub repo, feature/working branches only
 - Manual merge: feature branch → `stage` (test) → `main` (production) — no
   automated or agent-initiated merges into either branch
-- GitHub Actions: `deploy.yml` for `main`, `deploy-stage.yml` for `stage`
 - Infra-as-code: **AWS CDK (TypeScript)** — chosen over Serverless
   Framework given plans to sell this app on the App Store to multiple
   users and keep adding complex features over time; CDK avoids Serverless
   Framework's revenue-gated free tier and shares a language with the Expo
   client
+
+### CI/CD
+
+- **GitHub Actions:** `deploy-stage.yml` runs on push/merge to `stage`;
+  `deploy.yml` runs on push/merge to `main`. Merging the branch is what
+  should trigger the actual AWS deploy — no separate manual `cdk deploy`
+  step once this is wired up.
+- **Auth: OIDC federation, not long-lived access keys.** GitHub Actions
+  authenticates to AWS via a trust relationship (GitHub's OIDC provider +
+  an IAM role scoped to this specific repo), getting short-lived,
+  per-run credentials rather than a stored secret that could leak.
+  Consistent with the security posture already established elsewhere
+  (KMS-encrypted tokens, least-privilege Lambda grants, no client secrets
+  on public Cognito clients).
+- **This trust relationship is itself infrastructure** — a fifth CDK
+  construct (alongside Database/Auth/Storage/Api) that creates the IAM
+  OIDC identity provider and the scoped IAM role GitHub Actions assumes.
+  Not a manual AWS console click that goes untracked.
+- **Bootstrapping order:** this OIDC construct has to be deployed manually
+  once, the same way `cdk bootstrap` was — GitHub Actions can't deploy the
+  very trust relationship it needs in order to function. Once that one
+  manual deploy is done, every subsequent deploy (stage and prod) runs
+  through the pipeline automatically.
 
 ## Open questions / not yet decided
 
@@ -331,6 +404,11 @@ Two things side by side in this tab:
   institutions need support first
 - Merchant-based auto-recategorization: exact matching rule (merchant name
   string match vs. Plaid merchant ID) not yet decided
+- Domain/DNS for the hosted web app — not yet chosen
+- Web token storage: Cognito tokens in the browser via localStorage vs.
+  httpOnly cookies — a real security tradeoff not yet decided
+- Whether `apps/web` needs full feature parity with mobile before first
+  release, or can ship a smaller subset first
 
 See also `DATA-MODEL.md` for schema-level open questions and `AGENT.md`
 for the Journal agent's open questions.
