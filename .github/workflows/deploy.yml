@@ -1,0 +1,52 @@
+name: Deploy Prod
+
+on:
+  push:
+    branches: [main]
+
+# Required so actions/checkout's default GITHUB_TOKEN doesn't get used for
+# AWS auth, and so the OIDC token needed by aws-actions/configure-aws-credentials
+# can be minted for this job.
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  AWS_ACCOUNT_ID: "110695445537"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # cdk deploy bundles the Lambda from backend/'s TypeScript source via
+      # esbuild, which resolves backend's own dependencies (express,
+      # serverless-http) from backend/node_modules — needs a real install,
+      # not just infra's.
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Install infra dependencies
+        working-directory: infra
+        run: npm ci
+
+      # No long-lived AWS keys — assumes the role the CiCdConstruct created,
+      # scoped to this repo and the main branch only (see
+      # infra/lib/constructs/cicd-construct.ts and ARCHITECTURE.md's CI/CD
+      # section).
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/life-dashboard-github-actions-prod
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: cdk deploy (prod)
+        working-directory: infra
+        run: npx cdk deploy LifeDashboardStack-prod --context env=prod --require-approval never
