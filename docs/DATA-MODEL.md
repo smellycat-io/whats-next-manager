@@ -8,7 +8,9 @@ though this app's infrastructure is entirely separate (own AWS account/stack
 For the *behavior* built on top of these entities (Daily tab slotting,
 priority inheritance, view switching, etc.), see `ARCHITECTURE.md` — this
 doc is schema and API only. For the Journal tab agent's design, see
-`AGENT.md`.
+`AGENT.md`. For team collaboration and shared Life Areas, see
+`WORKSPACES.md`. For time tracking and invoicing, see
+`CLIENTS-INVOICING.md`.
 
 ## Table
 
@@ -18,16 +20,27 @@ doc is schema and API only. For the Journal tab agent's design, see
 | `USER#<id>` | `GOAL#<goalId>` | `GOAL` | name, cadence, count, goalType (tally/target), target (optional — required for target-type goals), lifeAreaIds (array — many-to-many, same as Projects/Tasks), priorityLevelId (optional override — defaults from lifeAreaIds using the same resolution logic as Tasks) |
 | `USER#<id>` | `JOURNAL#<timestamp>` | `JOURNAL_ENTRY` | text, date |
 | `USER#<id>` | `SCHEDULE#<day>` | `SCHEDULE_OVERRIDE` | blocks (only if the schedule becomes editable in-app) |
-| `USER#<id>` | `TASK#<taskId>` | `TASK` | projectId (optional — omitted for standalone tasks), name, description, deadline, priorityLevelId, lifeAreaIds (optional array — overrides project's tags when set), status (Backlog/To Do/In Progress/Done), completed, subtasks (array of `{id, name, completed}`), linkedCalendarEventId (optional — set once a deadline or time-slot triggers calendar sync) |
+| `USER#<id>` | `TASK#<taskId>` | `TASK` | projectId (optional — omitted for standalone tasks), name, description, deadline, priorityLevelId, lifeAreaIds (optional array — overrides project's tags when set), status (Backlog/To Do/In Progress/Done), completed, subtasks (array of `{id, name, completed}`), linkedCalendarEventId (optional — set once a deadline or time-slot triggers calendar sync), assignedToUserId (optional — see `WORKSPACES.md`) |
 | `USER#<id>` | `PRIORITY_LEVEL#<levelId>` | `PRIORITY_LEVEL` | name, order |
-| `USER#<id>` | `LIFE_AREA#<areaId>` | `LIFE_AREA` | name, defaultPriorityLevelId |
-| `USER#<id>` | `PROJECT#<projectId>` | `PROJECT` | lifeAreaIds (array — many-to-many), name |
+| `USER#<id>` | `LIFE_AREA#<areaId>` | `LIFE_AREA` | name, defaultPriorityLevelId, sharedWorkspaceId (optional — see `WORKSPACES.md`) |
+| `USER#<id>` | `PROJECT#<projectId>` | `PROJECT` | lifeAreaIds (array — many-to-many), name, isWorkRole (optional boolean), marketRateMin, marketRateMax, actualPayRate, payUnit (hourly/flat/per-project) — pay-rate fields only meaningful when isWorkRole is true, see `CLIENTS-INVOICING.md` |
+| `USER#<id>` | `CLIENT#<clientId>` | `CLIENT` | name, contactName, contactEmail, billingAddress (optional), projectIds (array), sharedWorkspaceId (optional, same mechanism as Life Area), notes — see `CLIENTS-INVOICING.md` |
+| `USER#<id>` | `TIME_ENTRY#<entryId>` | `TIME_ENTRY` | projectId, userId, date, hours, billable (boolean), rateSnapshot, invoiced (boolean), notes — see `CLIENTS-INVOICING.md` |
+| `USER#<id>` | `INVOICE#<invoiceId>` | `INVOICE` | clientId, invoiceNumber, dateRangeStart, dateRangeEnd, timeEntryIds (array), totalAmount (computed), status (draft/sent/paid), createdAt, sentAt, paidAt, dueDate, notes, pdfS3Key — see `CLIENTS-INVOICING.md` |
 | `USER#<id>` | `FOCUS_BLOCK#<blockId>` | `FOCUS_BLOCK` | day, startTime, endTime, lifeAreaIds (array — many-to-many, same shape as Project/Task/Goal; a task's effective Life Area tags are matched against this for slotting) |
-| `USER#<id>` | `SETTINGS` | `SETTINGS` | autoSlotTasks (boolean), agentAutoExecute (boolean — when false [default], the Journal agent confirms actions before writing; see `AGENT.md`) |
+| `USER#<id>` | `SETTINGS` | `SETTINGS` | autoSlotTasks (boolean), agentAutoExecute (boolean — when false [default], the Journal agent confirms actions before writing; see `AGENT.md`), agentMessagesToday (counter, resets daily — enforces the agent's rate-limit safety net, see `AGENT.md`), expoPushToken (optional — see `WORKSPACES.md`) |
 | `USER#<id>` | `TRANSACTION#<txnId>` | `TRANSACTION` | date, description, amount, merchantName, categoryId — currently manually entered; `plaidTransactionId` reserved for future Plaid phase |
 | `USER#<id>` | `CATEGORY#<categoryId>` | `CATEGORY` | name, budgetCardId (which card this category rolls up into), plaidCategoryMap (array — unused until Plaid phase) |
 | `USER#<id>` | `AGENT_MESSAGE#<timestamp>` | `AGENT_MESSAGE` | role (user/assistant), text, actionsTaken (array — tasks/projects/budget-cards/goals created or edited by this message, for an audit trail) |
 | `USER#<id>` | `GOOGLE_ACCOUNT` | `GOOGLE_ACCOUNT` | googleEmail, refreshTokenEncrypted (KMS-encrypted, single shared account-level CMK — see notes), calendarId, connectedAt |
+| `WORKSPACE#<workspaceId>` | `METADATA` | `WORKSPACE` | name, memberUserIds (array), createdBy, createdAt — see `WORKSPACES.md` |
+| `USER#<id>` | `WORKSPACE#<workspaceId>` | `WORKSPACE_MEMBERSHIP` | reverse-lookup only, no attributes beyond the keys — see `WORKSPACES.md` |
+| `WORKSPACE#<workspaceId>` | `AGENT_MESSAGE#<timestamp>` | `WORKSPACE_AGENT_MESSAGE` | role (user/assistant), text, actionsTaken (array) — shared chat log, see `WORKSPACES.md` |
+
+**New GSI:** `GSI1` — partition key `sharedWorkspaceId`, sort key
+`type#id`. Sparse (only present on items that are actually shared). Lets
+the backend query everything shared to a workspace in one call, regardless
+of which user's partition owns each item. See `WORKSPACES.md`.
 
 **Deferred — not yet built:** `PLAID_ITEM` (institutionName, accountNames,
 accessTokenRef, lastSyncedAt). Plaid's Transactions product is a recurring
@@ -111,6 +124,15 @@ Budget tab logic for the phased plan.
 - `GET /projects` / `POST /projects` / `PUT /projects/:id` / `DELETE
   /projects/:id` (also covers what were previously "Simple Lists" — see
   unification note above)
+- `PUT /projects/:id/work-role` — sets/clears `isWorkRole` and pay-rate
+  fields on a Project (see `CLIENTS-INVOICING.md`)
+- `GET /clients` / `POST /clients` / `PUT /clients/:id` / `DELETE
+  /clients/:id`
+- `GET /time-entries` / `POST /time-entries` / `PUT /time-entries/:id` /
+  `DELETE /time-entries/:id`
+- `GET /invoices` / `POST /invoices` (generates from selected time
+  entries) / `GET /invoices/:id` / `PUT /invoices/:id` (status updates) /
+  `GET /invoices/:id/pdf`
 - `GET /priority-levels` / `PUT /priority-levels` (bulk reorder) / `POST
   /priority-levels` / `DELETE /priority-levels/:id`
 - `GET /focus-blocks` / `PUT /focus-blocks`
@@ -137,6 +159,15 @@ Budget tab logic for the phased plan.
   relevant CRUD endpoints above, including Google Calendar events, returns
   the reply plus any actions taken
 - `GET /agent/messages` — chat history
+- `GET /workspaces` / `POST /workspaces` / `PUT /workspaces/:id` /
+  `DELETE /workspaces/:id`
+- `POST /workspaces/:id/members` / `DELETE /workspaces/:id/members/:userId`
+- `PUT /life-areas/:id/share` — sets or clears `sharedWorkspaceId`
+- `POST /workspace-agent/:workspaceId/chat` / `GET
+  /workspace-agent/:workspaceId/messages`
+- `POST /settings/push-token` — registers a user's Expo push token
+
+Full detail on all of the above: see `WORKSPACES.md`.
 
 **Deferred — not yet built:** `POST /plaid/link-token`, `POST
 /plaid/exchange`. Added when the Plaid phase begins (see `ARCHITECTURE.md`).
@@ -144,4 +175,5 @@ Budget tab logic for the phased plan.
 ## Open questions / not yet decided
 
 (none remaining specific to this doc — see `ARCHITECTURE.md` and
-`AGENT.md` for outstanding design questions)
+`AGENT.md` for outstanding design questions, and `WORKSPACES.md` for
+collaboration-specific open questions)
