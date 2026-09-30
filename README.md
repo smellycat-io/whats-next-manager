@@ -32,6 +32,10 @@ Six tabs:
   Workspace (multiple members, growing beyond one partner); shared Tasks
   support assignment, push notifications, and a shared agent conversation
   separate from your private one — see `WORKSPACES.md`
+- **Clients & Invoicing** (hamburger menu, alongside Settings/Profile) —
+  mark a Project as a paid work role with a rate, log billable hours
+  against it, and generate real invoices for external clients — see
+  `CLIENTS-INVOICING.md`
 
 This isn't a generic budgeting or habit-tracking app — it's shaped around
 one specific life, on purpose.
@@ -58,8 +62,9 @@ deploy flow, and each tab's behavioral design. See
 [`DATA-MODEL.md`](./DATA-MODEL.md) for the full DynamoDB schema and API
 endpoint list. See [`AGENT.md`](./AGENT.md) for the Journal tab AI agent's
 design. See [`WORKSPACES.md`](./WORKSPACES.md) for team collaboration and
-shared Life Areas. See [`CLAUDE.md`](./CLAUDE.md) for the coding standards
-any Claude agent working in this repo should follow.
+shared Life Areas. See [`CLIENTS-INVOICING.md`](./CLIENTS-INVOICING.md)
+for time tracking and invoicing. See [`CLAUDE.md`](./CLAUDE.md) for the
+coding standards any Claude agent working in this repo should follow.
 
 ## Getting started
 

@@ -15,8 +15,9 @@ infra-as-code choice below accounts for long-term growth).
 
 For the DynamoDB schema and API endpoint list, see `DATA-MODEL.md`. For the
 Journal tab's AI agent design, see `AGENT.md`. For team collaboration and
-shared Life Areas, see `WORKSPACES.md`. This doc covers the stack, deploy
-flow, and each tab's behavioral design.
+shared Life Areas, see `WORKSPACES.md`. For time tracking and invoicing,
+see `CLIENTS-INVOICING.md`. This doc covers the stack, deploy flow, and
+each tab's behavioral design.
 
 ## Navigation (bottom tabs)
 
@@ -27,6 +28,20 @@ flow, and each tab's behavioral design.
 5. **Goals**
 6. **Journal** — dated reflection notes plus the general AI agent chat
    (see Journal tab structure below and `AGENT.md`)
+
+## Navigation (hamburger menu)
+
+A second navigation surface, separate from the six bottom tabs, for
+less-frequent/management-style screens rather than daily-use ones:
+
+- **Settings** — `SETTINGS` entity (autoSlotTasks, agentAutoExecute, push
+  token, etc. — see `DATA-MODEL.md`)
+- **Profile** — user account details
+- **Clients & Invoicing** — time tracking against paid work roles and
+  invoice generation — see `CLIENTS-INVOICING.md` for the full design.
+  Time *logging* itself happens contextually from the To-Dos tab; this
+  menu section is for managing Clients and producing invoices from time
+  already logged.
 
 ## Daily tab logic
 
