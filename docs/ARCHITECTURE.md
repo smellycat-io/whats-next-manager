@@ -378,9 +378,14 @@ worth its own UI, given how much this app is expected to keep growing.
 
 ## Deploy & repo flow
 
-- GitHub repo, feature/working branches only
+- GitHub repo, feature/working branches only. Branch naming, the
+  pre-merge checklist, and reporting rules are in `CLAUDE.md` (Git workflow).
 - Manual merge: feature branch → `stage` (test) → `main` (production) — no
   automated or agent-initiated merges into either branch
+- Every PR targets `stage`. The `stage` → `main` promotion PR is the only PR
+  that targets `main`.
+- Pushes to `stage` and `main` deploy automatically (see CI/CD below), so a
+  merge is a deploy.
 - Infra-as-code: **AWS CDK (TypeScript)** — chosen over Serverless
   Framework given plans to sell this app on the App Store to multiple
   users and keep adding complex features over time; CDK avoids Serverless

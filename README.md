@@ -57,12 +57,12 @@ one specific life, on purpose.
 
 Own standalone AWS stack — no shared infrastructure with other projects.
 
-See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for the stack, repo structure,
+See [`ARCHITECTURE.md`](./docs/ARCHITECTURE.md) for the stack, repo structure,
 deploy flow, and each tab's behavioral design. See
-[`DATA-MODEL.md`](./DATA-MODEL.md) for the full DynamoDB schema and API
-endpoint list. See [`AGENT.md`](./AGENT.md) for the Journal tab AI agent's
-design. See [`WORKSPACES.md`](./WORKSPACES.md) for team collaboration and
-shared Life Areas. See [`CLIENTS-INVOICING.md`](./CLIENTS-INVOICING.md)
+[`DATA-MODEL.md`](./docs/DATA-MODEL.md) for the full DynamoDB schema and API
+endpoint list. See [`AGENT.md`](./docs/AGENT.md) for the Journal tab AI agent's
+design. See [`WORKSPACES.md`](./docs/WORKSPACES.md) for team collaboration and
+shared Life Areas. See [`CLIENTS-INVOICING.md`](./docs/CLIENTS-INVOICING.md)
 for time tracking and invoicing. See [`CLAUDE.md`](./CLAUDE.md) for the
 coding standards any Claude agent working in this repo should follow.
 
@@ -84,9 +84,10 @@ Backend infra is defined with **AWS CDK (TypeScript)** in `infra/`. See
 
 ## Repo flow
 
-- Work happens on feature/working branches
-- Manual merge: feature branch → `stage` (test) → `main` (production)
-- No automated or agent-initiated merges into `stage` or `main`
+Feature branch → `stage` (test) → `main` (production). Merging is manual
+only, and a merge triggers an automatic deploy. Full workflow rules
+(branch naming, PR base branch, pre-merge checklist, reporting): see
+[`CLAUDE.md`](./CLAUDE.md).
 
 ## Status
 
