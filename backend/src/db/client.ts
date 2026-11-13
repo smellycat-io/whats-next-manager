@@ -28,6 +28,11 @@ export const docClient = DynamoDBDocumentClient.from(ddbClient, {
 
 export type TableItem = Record<string, unknown> & { pk: string; sk: string };
 
+/** The `USER#<id>` PK convention used throughout DATA-MODEL.md. */
+export function userPk(userId: string): string {
+  return `USER#${userId}`;
+}
+
 export async function getItem(
   pk: string,
   sk: string,
@@ -62,21 +67,43 @@ export async function updateItem(
 
   const expressionAttributeNames: Record<string, string> = {};
   const expressionAttributeValues: Record<string, unknown> = {};
-  const setClauses = keys.map((key, index) => {
+  const setClauses: string[] = [];
+  const removeClauses: string[] = [];
+
+  keys.forEach((key, index) => {
     const nameToken = `#f${index}`;
-    const valueToken = `:v${index}`;
     expressionAttributeNames[nameToken] = key;
-    expressionAttributeValues[valueToken] = updates[key];
-    return `${nameToken} = ${valueToken}`;
+
+    // null means "clear this attribute" — a plain SET to null would leave
+    // a NULL-type value in place, which (unlike a genuinely absent
+    // attribute) breaks sparse GSIs like GSI1 (see WORKSPACES.md), so an
+    // explicit REMOVE is needed instead.
+    if (updates[key] === null) {
+      removeClauses.push(nameToken);
+    } else {
+      const valueToken = `:v${index}`;
+      expressionAttributeValues[valueToken] = updates[key];
+      setClauses.push(`${nameToken} = ${valueToken}`);
+    }
   });
+
+  const updateExpression = [
+    setClauses.length > 0 ? `SET ${setClauses.join(", ")}` : null,
+    removeClauses.length > 0 ? `REMOVE ${removeClauses.join(", ")}` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   const result = await docClient.send(
     new UpdateCommand({
       TableName: TABLE_NAME,
       Key: { pk, sk },
-      UpdateExpression: `SET ${setClauses.join(", ")}`,
+      UpdateExpression: updateExpression,
       ExpressionAttributeNames: expressionAttributeNames,
-      ExpressionAttributeValues: expressionAttributeValues,
+      ExpressionAttributeValues:
+        Object.keys(expressionAttributeValues).length > 0
+          ? expressionAttributeValues
+          : undefined,
       ReturnValues: "ALL_NEW",
     }),
   );
