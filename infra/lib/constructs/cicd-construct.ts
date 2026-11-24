@@ -1,26 +1,36 @@
 import { Construct } from "constructs";
-import { Stack, Aws } from "aws-cdk-lib";
+import { Stack } from "aws-cdk-lib";
 import * as iam from "aws-cdk-lib/aws-iam";
 
-const GITHUB_OIDC_URL = "https://token.actions.githubusercontent.com";
+const GITHUB_OIDC_HOST = "token.actions.githubusercontent.com";
+const GITHUB_OIDC_URL = `https://${GITHUB_OIDC_HOST}`;
 
 export interface CiCdConstructProps {
   envName: string;
   /** e.g. "smellycat-io" */
   githubOrg: string;
+  /** Numeric GitHub account id of githubOrg, e.g. "199698335". */
+  githubOrgId: string;
   /** e.g. "whats-next-manager" */
   githubRepo: string;
+  /** Numeric GitHub repository id of githubRepo, e.g. "1365035550". */
+  githubRepoId: string;
   /** Branch this env's deploy role trusts — "stage" or "main". */
   trustedBranch: string;
   /**
-   * ARN of a GitHub OIDC provider already registered in this account, found
-   * by a pre-synth lookup in bin/app.ts. IAM only allows one OIDC provider
-   * per URL per account, and both the stage and prod stacks live in the
-   * same account — whichever stack deploys second must reuse the first
-   * one's provider instead of trying to create a duplicate. Leave unset to
-   * create a new provider (first deploy in the account).
+   * Whether this stack creates and owns the account's GitHub OIDC provider.
+   * IAM allows only one OIDC provider per URL per account, and the stage
+   * and prod stacks share an account, so exactly one stack (stage) owns it
+   * and the other imports it by its fixed ARN.
+   *
+   * This must be a fixed per-env decision, not a "does it exist yet?"
+   * lookup at synth time: once the provider exists, a lookup makes the
+   * owning stack switch to importing it, CloudFormation then deletes the
+   * stack's provider resource, and that resource's delete handler removes
+   * the real provider from IAM, breaking every deploy role in the account.
+   * In a fresh account the owning stack must be deployed first.
    */
-  existingGithubOidcProviderArn?: string;
+  ownsGithubOidcProvider: boolean;
   /** CDK bootstrap qualifier — matches what `cdk bootstrap` used. */
   bootstrapQualifier?: string;
 }
@@ -45,26 +55,35 @@ export class CiCdConstruct extends Construct {
     const account = Stack.of(this).account;
     const region = Stack.of(this).region;
 
-    const oidcProvider = props.existingGithubOidcProviderArn
-      ? iam.OpenIdConnectProvider.fromOpenIdConnectProviderArn(
-          this,
-          "GitHubOidcProvider",
-          props.existingGithubOidcProviderArn,
-        )
-      : new iam.OpenIdConnectProvider(this, "GitHubOidcProvider", {
+    const oidcProvider = props.ownsGithubOidcProvider
+      ? new iam.OpenIdConnectProvider(this, "GitHubOidcProvider", {
           url: GITHUB_OIDC_URL,
           clientIds: ["sts.amazonaws.com"],
-        });
+        })
+      : iam.OpenIdConnectProvider.fromOpenIdConnectProviderArn(
+          this,
+          "GitHubOidcProvider",
+          `arn:${Stack.of(this).partition}:iam::${account}:oidc-provider/${GITHUB_OIDC_HOST}`,
+        );
 
     // Restricts the trust to this exact repo AND this exact branch — a
     // workflow run from a fork or a different branch can't assume this
     // role, even though the OIDC provider itself is account-wide.
+    //
+    // The repo has GitHub's immutable OIDC subject enabled
+    // (use_immutable_subject, see GET /repos/{owner}/{repo}/actions/oidc/
+    // customization/sub), so the `sub` claim embeds the numeric owner and
+    // repo ids: repo:<org>@<orgId>/<repo>@<repoId>:ref:refs/heads/<branch>.
+    // That guards against a deleted-and-recreated (or renamed-into-place)
+    // repo with the same name inheriting this trust, since a new repo gets
+    // a new id. A plain repo:<org>/<repo>:... condition never matches and
+    // every deploy fails with "Not authorized to perform
+    // sts:AssumeRoleWithWebIdentity". Exact match (StringEquals), no
+    // wildcards.
     const principal = new iam.OpenIdConnectPrincipal(oidcProvider).withConditions({
       StringEquals: {
         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-      },
-      StringLike: {
-        "token.actions.githubusercontent.com:sub": `repo:${props.githubOrg}/${props.githubRepo}:ref:refs/heads/${props.trustedBranch}`,
+        "token.actions.githubusercontent.com:sub": `repo:${props.githubOrg}@${props.githubOrgId}/${props.githubRepo}@${props.githubRepoId}:ref:refs/heads/${props.trustedBranch}`,
       },
     });
 

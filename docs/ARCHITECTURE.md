@@ -405,6 +405,19 @@ worth its own UI, given how much this app is expected to keep growing.
   Consistent with the security posture already established elsewhere
   (KMS-encrypted tokens, least-privilege Lambda grants, no client secrets
   on public Cognito clients).
+- **Trust scope:** each env's role trusts exactly one `sub` claim, matched
+  with `StringEquals`: this repo plus that env's branch (stage role:
+  `refs/heads/stage`, prod role: `refs/heads/main`). The repo uses GitHub's
+  immutable OIDC subject, so the claim embeds numeric ids:
+  `repo:smellycat-io@199698335/whats-next-manager@1365035550:ref:refs/heads/<branch>`.
+  A recreated repo with the same name gets a new id and can't inherit the
+  trust.
+- **OIDC provider ownership:** IAM allows one GitHub OIDC provider per
+  account, and stage and prod share an account. The stage stack owns the
+  provider; the prod stack imports it by its fixed ARN. This is a fixed
+  per-env setting, not a synth-time existence check, because switching the
+  owning stack to an import would make CloudFormation delete the real
+  provider. In a fresh account, stage must be deployed before prod.
 - **This trust relationship is itself infrastructure** — a fifth CDK
   construct (alongside Database/Auth/Storage/Api) that creates the IAM
   OIDC identity provider and the scoped IAM role GitHub Actions assumes.
