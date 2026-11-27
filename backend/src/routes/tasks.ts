@@ -10,6 +10,8 @@ import {
   updateItem,
   userPk,
 } from "../db/client";
+import { badRequest, notFound } from "../http/errors";
+import { bodyOf, pickDefinedFields } from "../http/request-body";
 import { resolveHighestUrgencyPriorityLevelId } from "../lib/priority-resolution";
 import { SK_PREFIX as PROJECT_SK_PREFIX } from "./projects";
 
@@ -35,6 +37,19 @@ interface TaskFields {
   subtasks?: Subtask[];
   assignedToUserId?: string;
 }
+
+const UPDATABLE_FIELDS = [
+  "name",
+  "description",
+  "deadline",
+  "projectId",
+  "lifeAreaIds",
+  "priorityLevelId",
+  "status",
+  "completed",
+  "subtasks",
+  "assignedToUserId",
+] as const satisfies readonly (keyof TaskFields)[];
 
 function skFor(id: string): string {
   return `${SK_PREFIX}${id}`;
@@ -87,108 +102,46 @@ export const tasksRouter = Router();
 tasksRouter.use(requireUserId);
 
 tasksRouter.get("/", async (req, res) => {
-  try {
-    const items = await queryByPk(userPk(req.userId), SK_PREFIX);
-    res.json(items.map(toTask));
-  } catch (error) {
-    res.status(500).json({
-      status: "error",
-      message: error instanceof Error ? error.message : String(error),
-    });
-  }
+  const items = await queryByPk(userPk(req.userId), SK_PREFIX);
+  res.json(items.map(toTask));
 });
 
 tasksRouter.post("/", async (req, res) => {
-  try {
-    const body = (req.body ?? {}) as TaskFields;
-    if (!body.name) {
-      res.status(400).json({ status: "error", message: "name is required" });
-      return;
-    }
+  const body = bodyOf<TaskFields>(req.body);
+  if (!body.name) throw badRequest("name is required");
 
-    const priorityLevelId =
-      body.priorityLevelId ??
-      (await resolveDefaultPriorityLevelId(req.userId, body));
+  const priorityLevelId =
+    body.priorityLevelId ??
+    (await resolveDefaultPriorityLevelId(req.userId, body));
 
-    const item: TableItem = {
-      pk: userPk(req.userId),
-      sk: skFor(randomUUID()),
-      type: "TASK",
-      projectId: body.projectId,
-      name: body.name,
-      description: body.description,
-      deadline: body.deadline,
-      priorityLevelId,
-      lifeAreaIds: body.lifeAreaIds ?? [],
-      status: body.status ?? "Backlog",
-      completed: body.completed ?? false,
-      subtasks: body.subtasks ?? [],
-      assignedToUserId: body.assignedToUserId,
-    };
-    await putItem(item);
-    res.status(201).json(toTask(item));
-  } catch (error) {
-    res.status(500).json({
-      status: "error",
-      message: error instanceof Error ? error.message : String(error),
-    });
-  }
+  const item: TableItem = {
+    pk: userPk(req.userId),
+    sk: skFor(randomUUID()),
+    type: "TASK",
+    projectId: body.projectId,
+    name: body.name,
+    description: body.description,
+    deadline: body.deadline,
+    priorityLevelId,
+    lifeAreaIds: body.lifeAreaIds ?? [],
+    status: body.status ?? "Backlog",
+    completed: body.completed ?? false,
+    subtasks: body.subtasks ?? [],
+    assignedToUserId: body.assignedToUserId,
+  };
+  await putItem(item);
+  res.status(201).json(toTask(item));
 });
 
 tasksRouter.put("/:id", async (req, res) => {
-  try {
-    const pk = userPk(req.userId);
-    const sk = skFor(req.params.id);
-    const existing = await getItem(pk, sk);
-    if (!existing) {
-      res.status(404).json({ status: "error", message: "Task not found" });
-      return;
-    }
-
-    const body = (req.body ?? {}) as TaskFields;
-    const updates: Record<string, unknown> = {};
-    (
-      [
-        "name",
-        "description",
-        "deadline",
-        "projectId",
-        "lifeAreaIds",
-        "priorityLevelId",
-        "status",
-        "completed",
-        "subtasks",
-        "assignedToUserId",
-      ] as const
-    ).forEach((field) => {
-      if (body[field] !== undefined) updates[field] = body[field];
-    });
-
-    const updated = await updateItem(pk, sk, updates);
-    res.json(toTask(updated as TableItem));
-  } catch (error) {
-    res.status(500).json({
-      status: "error",
-      message: error instanceof Error ? error.message : String(error),
-    });
-  }
+  const updates = pickDefinedFields(bodyOf<TaskFields>(req.body), UPDATABLE_FIELDS);
+  const updated = await updateItem(userPk(req.userId), skFor(req.params.id), updates);
+  if (!updated) throw notFound("Task");
+  res.json(toTask(updated));
 });
 
 tasksRouter.delete("/:id", async (req, res) => {
-  try {
-    const pk = userPk(req.userId);
-    const sk = skFor(req.params.id);
-    const existing = await getItem(pk, sk);
-    if (!existing) {
-      res.status(404).json({ status: "error", message: "Task not found" });
-      return;
-    }
-    await deleteItem(pk, sk);
-    res.status(204).send();
-  } catch (error) {
-    res.status(500).json({
-      status: "error",
-      message: error instanceof Error ? error.message : String(error),
-    });
-  }
+  const deleted = await deleteItem(userPk(req.userId), skFor(req.params.id));
+  if (!deleted) throw notFound("Task");
+  res.status(204).send();
 });

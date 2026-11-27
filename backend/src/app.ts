@@ -4,6 +4,7 @@ import { priorityLevelsRouter } from "./routes/priority-levels";
 import { lifeAreasRouter } from "./routes/life-areas";
 import { projectsRouter } from "./routes/projects";
 import { tasksRouter } from "./routes/tasks";
+import { errorHandler } from "./http/errors";
 
 /**
  * Builds the Express app. Kept separate from lambda.ts so the app itself
@@ -34,6 +35,9 @@ export function createApp(): Express {
   // app.use("/calendar", calendarRouter);
   // app.use("/agent", agentRouter);
   // app.use("/auth/google", googleAuthRouter);
+
+  // Registered last so it catches errors from every router above.
+  app.use(errorHandler);
 
   return app;
 }

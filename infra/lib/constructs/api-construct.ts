@@ -110,7 +110,7 @@ export class ApiConstruct extends Construct {
     // Only the exact GET /health liveness check is public. API Gateway
     // doesn't fall back to the root {proxy+} once a request has matched the
     // /health resource, so /health needs its own authenticated {proxy+}
-    // for /health/db and anything else below it.
+    // so anything below /health still requires a token.
     const health = this.api.root.addResource("health");
     health.addMethod("GET", integration, noAuth);
     allowUnauthenticatedPreflight(health.addProxy({ anyMethod: true }));
