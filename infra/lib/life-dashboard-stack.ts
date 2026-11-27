@@ -70,11 +70,16 @@ export class LifeDashboardStack extends Stack {
       ownsGithubOidcProvider: props.envName === GITHUB_OIDC_PROVIDER_OWNER_ENV,
     });
 
-    // Outputs the Expo app needs to configure itself against this environment.
+    // Outputs the clients need to configure themselves against this
+    // environment. The agent client's secret is deliberately not an output;
+    // read it with `aws cognito-idp describe-user-pool-client`.
     new CfnOutput(this, "ApiUrl", { value: api.api.url });
     new CfnOutput(this, "UserPoolId", { value: auth.userPool.userPoolId });
-    new CfnOutput(this, "UserPoolClientId", {
-      value: auth.userPoolClient.userPoolClientId,
+    new CfnOutput(this, "MobileClientId", {
+      value: auth.mobileClient.userPoolClientId,
+    });
+    new CfnOutput(this, "AgentClientId", {
+      value: auth.agentClient.userPoolClientId,
     });
     new CfnOutput(this, "TableName", { value: database.table.tableName });
     new CfnOutput(this, "GitHubActionsRoleArn", {
