@@ -4,12 +4,18 @@ import { requireUserId } from "../auth/current-user";
 import {
   TableItem,
   deleteItem,
-  getItem,
   putItem,
   queryByPk,
   updateItem,
   userPk,
 } from "../db/client";
+import { badRequest, notFound } from "../http/errors";
+import { bodyOf, pickDefinedFields } from "../http/request-body";
+
+interface PriorityLevelFields {
+  name: string;
+  order: number;
+}
 
 const SK_PREFIX = "PRIORITY_LEVEL#";
 
@@ -67,102 +73,64 @@ export const priorityLevelsRouter = Router();
 priorityLevelsRouter.use(requireUserId);
 
 priorityLevelsRouter.get("/", async (req, res) => {
-  try {
-    const levels = await seedDefaultsIfEmpty(req.userId);
-    res.json(levels.map(toPriorityLevel));
-  } catch (error) {
-    res.status(500).json({
-      status: "error",
-      message: error instanceof Error ? error.message : String(error),
-    });
-  }
+  const levels = await seedDefaultsIfEmpty(req.userId);
+  res.json(levels.map(toPriorityLevel));
 });
 
 priorityLevelsRouter.post("/", async (req, res) => {
-  try {
-    const { name, order } = (req.body ?? {}) as {
-      name?: string;
-      order?: number;
-    };
-    if (!name) {
-      res.status(400).json({ status: "error", message: "name is required" });
-      return;
-    }
+  const { name, order } = bodyOf<PriorityLevelFields>(req.body);
+  if (!name) throw badRequest("name is required");
 
-    let resolvedOrder = order;
-    if (resolvedOrder === undefined) {
-      const existing = await queryByPk(userPk(req.userId), SK_PREFIX);
-      resolvedOrder =
-        existing.length === 0
-          ? 0
-          : Math.max(...existing.map((level) => level.order as number)) + 1;
-    }
-
-    const item: TableItem = {
-      pk: userPk(req.userId),
-      sk: skFor(randomUUID()),
-      type: "PRIORITY_LEVEL",
-      name,
-      order: resolvedOrder,
-    };
-    await putItem(item);
-    res.status(201).json(toPriorityLevel(item));
-  } catch (error) {
-    res.status(500).json({
-      status: "error",
-      message: error instanceof Error ? error.message : String(error),
-    });
+  let resolvedOrder = order;
+  if (resolvedOrder === undefined) {
+    const existing = await queryByPk(userPk(req.userId), SK_PREFIX);
+    resolvedOrder =
+      existing.length === 0
+        ? 0
+        : Math.max(...existing.map((level) => level.order as number)) + 1;
   }
+
+  const item: TableItem = {
+    pk: userPk(req.userId),
+    sk: skFor(randomUUID()),
+    type: "PRIORITY_LEVEL",
+    name,
+    order: resolvedOrder,
+  };
+  await putItem(item);
+  res.status(201).json(toPriorityLevel(item));
 });
 
 // Bulk update — DATA-MODEL.md documents this as the reorder endpoint, and
 // it's the only PUT this resource has, so renames (ARCHITECTURE.md's
 // "fully editable") go through here too: body is an array of
 // { id, name?, order? }, each item updated with whichever fields it
-// includes. Callers always resend real ids from a prior GET, so this
-// skips the existence check the single-item routes below do.
+// includes. Ids that don't exist are skipped (updateItem never creates
+// items), so the response lists only the levels actually updated.
 priorityLevelsRouter.put("/", async (req, res) => {
-  try {
-    const updatesList = req.body;
-    if (!Array.isArray(updatesList)) {
-      res.status(400).json({
-        status: "error",
-        message: "body must be an array of { id, name?, order? }",
-      });
-      return;
-    }
-
-    const updated = await Promise.all(
-      updatesList.map(({ id, ...fields }) =>
-        updateItem(userPk(req.userId), skFor(id), fields),
-      ),
-    );
-    res.json(updated.filter(Boolean).map((item) => toPriorityLevel(item as TableItem)));
-  } catch (error) {
-    res.status(500).json({
-      status: "error",
-      message: error instanceof Error ? error.message : String(error),
-    });
+  const updatesList: unknown = req.body;
+  if (!Array.isArray(updatesList)) {
+    throw badRequest("body must be an array of { id, name?, order? }");
   }
+
+  const updated = await Promise.all(
+    updatesList.map(({ id, ...fields }: { id: string } & Partial<PriorityLevelFields>) =>
+      updateItem(
+        userPk(req.userId),
+        skFor(id),
+        pickDefinedFields<PriorityLevelFields>(fields, ["name", "order"]),
+      ),
+    ),
+  );
+  res.json(
+    updated
+      .filter((item): item is TableItem => item !== undefined)
+      .map(toPriorityLevel),
+  );
 });
 
 priorityLevelsRouter.delete("/:id", async (req, res) => {
-  try {
-    const pk = userPk(req.userId);
-    const sk = skFor(req.params.id);
-    const existing = await getItem(pk, sk);
-    if (!existing) {
-      res
-        .status(404)
-        .json({ status: "error", message: "Priority level not found" });
-      return;
-    }
-    await deleteItem(pk, sk);
-    res.status(204).send();
-  } catch (error) {
-    res.status(500).json({
-      status: "error",
-      message: error instanceof Error ? error.message : String(error),
-    });
-  }
+  const deleted = await deleteItem(userPk(req.userId), skFor(req.params.id));
+  if (!deleted) throw notFound("Priority level");
+  res.status(204).send();
 });

@@ -4,12 +4,13 @@ import { requireUserId } from "../auth/current-user";
 import {
   TableItem,
   deleteItem,
-  getItem,
   putItem,
   queryByPk,
   updateItem,
   userPk,
 } from "../db/client";
+import { badRequest, notFound } from "../http/errors";
+import { bodyOf, pickDefinedFields } from "../http/request-body";
 
 const SK_PREFIX = "LIFE_AREA#";
 
@@ -38,74 +39,39 @@ export const lifeAreasRouter = Router();
 lifeAreasRouter.use(requireUserId);
 
 lifeAreasRouter.get("/", async (req, res) => {
-  try {
-    // Personal Life Areas only — doesn't yet include ones shared *to* this
-    // user by a workspace they belong to (that needs the workspace
-    // membership → GSI1 lookup WORKSPACES.md describes as a separate,
-    // bigger authorization layer, not built here).
-    const items = await queryByPk(userPk(req.userId), SK_PREFIX);
-    res.json(items.map(toLifeArea));
-  } catch (error) {
-    res.status(500).json({
-      status: "error",
-      message: error instanceof Error ? error.message : String(error),
-    });
-  }
+  // Personal Life Areas only — doesn't yet include ones shared *to* this
+  // user by a workspace they belong to (that needs the workspace
+  // membership → GSI1 lookup WORKSPACES.md describes as a separate,
+  // bigger authorization layer, not built here).
+  const items = await queryByPk(userPk(req.userId), SK_PREFIX);
+  res.json(items.map(toLifeArea));
 });
 
 lifeAreasRouter.post("/", async (req, res) => {
-  try {
-    const { name, defaultPriorityLevelId } = (req.body ?? {}) as LifeAreaFields;
-    if (!name || !defaultPriorityLevelId) {
-      res.status(400).json({
-        status: "error",
-        message: "name and defaultPriorityLevelId are required",
-      });
-      return;
-    }
-
-    const item: TableItem = {
-      pk: userPk(req.userId),
-      sk: skFor(randomUUID()),
-      type: "LIFE_AREA",
-      name,
-      defaultPriorityLevelId,
-    };
-    await putItem(item);
-    res.status(201).json(toLifeArea(item));
-  } catch (error) {
-    res.status(500).json({
-      status: "error",
-      message: error instanceof Error ? error.message : String(error),
-    });
+  const { name, defaultPriorityLevelId } = bodyOf<LifeAreaFields>(req.body);
+  if (!name || !defaultPriorityLevelId) {
+    throw badRequest("name and defaultPriorityLevelId are required");
   }
+
+  const item: TableItem = {
+    pk: userPk(req.userId),
+    sk: skFor(randomUUID()),
+    type: "LIFE_AREA",
+    name,
+    defaultPriorityLevelId,
+  };
+  await putItem(item);
+  res.status(201).json(toLifeArea(item));
 });
 
 lifeAreasRouter.put("/:id", async (req, res) => {
-  try {
-    const pk = userPk(req.userId);
-    const sk = skFor(req.params.id);
-    const existing = await getItem(pk, sk);
-    if (!existing) {
-      res.status(404).json({ status: "error", message: "Life Area not found" });
-      return;
-    }
-
-    const { name, defaultPriorityLevelId } = (req.body ?? {}) as LifeAreaFields;
-    const updates: Record<string, unknown> = {};
-    if (name !== undefined) updates.name = name;
-    if (defaultPriorityLevelId !== undefined) {
-      updates.defaultPriorityLevelId = defaultPriorityLevelId;
-    }
-
-    const updated = await updateItem(pk, sk, updates);
-    res.json(toLifeArea(updated as TableItem));
-  } catch (error) {
-    res.status(500).json({
-      status: "error",
-      message: error instanceof Error ? error.message : String(error),
-    });
-  }
+  const updates = pickDefinedFields(bodyOf<LifeAreaFields>(req.body), [
+    "name",
+    "defaultPriorityLevelId",
+  ]);
+  const updated = await updateItem(userPk(req.userId), skFor(req.params.id), updates);
+  if (!updated) throw notFound("Life Area");
+  res.json(toLifeArea(updated));
 });
 
 // Sets or clears sharedWorkspaceId — see WORKSPACES.md. Body:
@@ -114,45 +80,16 @@ lifeAreasRouter.put("/:id", async (req, res) => {
 // than setting it to a null value, so GSI1's sparse index excludes it
 // again (see updateItem in db/client.ts).
 lifeAreasRouter.put("/:id/share", async (req, res) => {
-  try {
-    const pk = userPk(req.userId);
-    const sk = skFor(req.params.id);
-    const existing = await getItem(pk, sk);
-    if (!existing) {
-      res.status(404).json({ status: "error", message: "Life Area not found" });
-      return;
-    }
-
-    const { sharedWorkspaceId } = (req.body ?? {}) as {
-      sharedWorkspaceId?: string | null;
-    };
-    const updated = await updateItem(pk, sk, {
-      sharedWorkspaceId: sharedWorkspaceId ?? null,
-    });
-    res.json(toLifeArea(updated as TableItem));
-  } catch (error) {
-    res.status(500).json({
-      status: "error",
-      message: error instanceof Error ? error.message : String(error),
-    });
-  }
+  const { sharedWorkspaceId } = bodyOf<{ sharedWorkspaceId: string | null }>(req.body);
+  const updated = await updateItem(userPk(req.userId), skFor(req.params.id), {
+    sharedWorkspaceId: sharedWorkspaceId ?? null,
+  });
+  if (!updated) throw notFound("Life Area");
+  res.json(toLifeArea(updated));
 });
 
 lifeAreasRouter.delete("/:id", async (req, res) => {
-  try {
-    const pk = userPk(req.userId);
-    const sk = skFor(req.params.id);
-    const existing = await getItem(pk, sk);
-    if (!existing) {
-      res.status(404).json({ status: "error", message: "Life Area not found" });
-      return;
-    }
-    await deleteItem(pk, sk);
-    res.status(204).send();
-  } catch (error) {
-    res.status(500).json({
-      status: "error",
-      message: error instanceof Error ? error.message : String(error),
-    });
-  }
+  const deleted = await deleteItem(userPk(req.userId), skFor(req.params.id));
+  if (!deleted) throw notFound("Life Area");
+  res.status(204).send();
 });

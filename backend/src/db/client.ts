@@ -1,4 +1,7 @@
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import {
+  ConditionalCheckFailedException,
+  DynamoDBClient,
+} from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
   GetCommand,
@@ -20,6 +23,11 @@ import {
 
 const TABLE_NAME = process.env.TABLE_NAME as string;
 const GSI1_INDEX_NAME = "GSI1-sharedWorkspace";
+
+// Guards updates and deletes. DynamoDB's UpdateItem otherwise creates the
+// item when the key doesn't exist, which would leave a half-formed record
+// with no `type`.
+const ITEM_EXISTS = "attribute_exists(pk)";
 
 const ddbClient = new DynamoDBClient({});
 export const docClient = DynamoDBDocumentClient.from(ddbClient, {
@@ -55,6 +63,11 @@ export async function putItem(item: TableItem): Promise<void> {
   );
 }
 
+/**
+ * Applies `updates` to an existing item and returns the updated item, or
+ * undefined when no item has that key. Never creates an item. A `null`
+ * value removes the attribute.
+ */
 export async function updateItem(
   pk: string,
   sk: string,
@@ -94,29 +107,48 @@ export async function updateItem(
     .filter(Boolean)
     .join(" ");
 
-  const result = await docClient.send(
-    new UpdateCommand({
-      TableName: TABLE_NAME,
-      Key: { pk, sk },
-      UpdateExpression: updateExpression,
-      ExpressionAttributeNames: expressionAttributeNames,
-      ExpressionAttributeValues:
-        Object.keys(expressionAttributeValues).length > 0
-          ? expressionAttributeValues
-          : undefined,
-      ReturnValues: "ALL_NEW",
-    }),
-  );
-  return result.Attributes as TableItem | undefined;
+  return ifItemExists(async () => {
+    const result = await docClient.send(
+      new UpdateCommand({
+        TableName: TABLE_NAME,
+        Key: { pk, sk },
+        UpdateExpression: updateExpression,
+        ConditionExpression: ITEM_EXISTS,
+        ExpressionAttributeNames: expressionAttributeNames,
+        ExpressionAttributeValues:
+          Object.keys(expressionAttributeValues).length > 0
+            ? expressionAttributeValues
+            : undefined,
+        ReturnValues: "ALL_NEW",
+      }),
+    );
+    return result.Attributes as TableItem;
+  });
 }
 
-export async function deleteItem(pk: string, sk: string): Promise<void> {
-  await docClient.send(
-    new DeleteCommand({
-      TableName: TABLE_NAME,
-      Key: { pk, sk },
-    }),
-  );
+/** Deletes an item. Returns false when no item has that key. */
+export async function deleteItem(pk: string, sk: string): Promise<boolean> {
+  const deleted = await ifItemExists(async () => {
+    await docClient.send(
+      new DeleteCommand({
+        TableName: TABLE_NAME,
+        Key: { pk, sk },
+        ConditionExpression: ITEM_EXISTS,
+      }),
+    );
+    return true;
+  });
+  return deleted ?? false;
+}
+
+/** Runs a write guarded by ITEM_EXISTS, mapping a failed guard to undefined. */
+async function ifItemExists<T>(write: () => Promise<T>): Promise<T | undefined> {
+  try {
+    return await write();
+  } catch (error) {
+    if (error instanceof ConditionalCheckFailedException) return undefined;
+    throw error;
+  }
 }
 
 export async function queryByPk(

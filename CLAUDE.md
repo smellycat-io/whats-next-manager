@@ -83,6 +83,11 @@ Status section.
 
 - Every storage/network call is wrapped in try/catch. Fail visibly to the
   user (a status message), never silently.
+- Backend routes are the exception: they don't catch errors themselves.
+  A handler throws (`badRequest`, `notFound`, or lets a storage error
+  propagate) and the shared `errorHandler` in `backend/src/http/errors.ts`
+  sends the `{ status: "error", message }` response. Express 5 forwards
+  async errors there automatically.
 - Don't let one failed save block the rest of the UI from working.
 
 ## Style
@@ -186,7 +191,8 @@ in that area. It isn't a scheduled audit.
   even if not told to branch first.
 - **Before merging feature → `stage`:**
   1. Every package touched builds and type-checks cleanly (`tsc --noEmit`),
-     and runs locally where it can.
+     and runs locally where it can. In `backend/`, `npm run typecheck &&
+     npm test` both pass.
   2. Any tests written for the change pass.
   3. Read through the diff for duplicated logic, functions or files that no
      longer have one clear job, and names that no longer match what the code
@@ -231,5 +237,9 @@ in that area. It isn't a scheduled audit.
 - Tests should fail loudly and specifically. Assert the actual expected value
   (the exact level, the exact filtered list), not just "no exception thrown",
   so a broken test says what's wrong.
-- A test framework hasn't been chosen for this repo yet. Ask before adding
-  one.
+- Backend tests use **Vitest**, with `supertest` for route tests run
+  against `createApp()` in-process. Test files sit next to the code they
+  test (`*.test.ts`). Route tests mock `auth/current-user` with
+  `test-support/fake-auth.ts` and mock `db/client`; tests of the auth layer
+  itself use the real module. Run with `npm test` in `backend/`. CI runs
+  the type-check and tests before every deploy.
