@@ -108,6 +108,13 @@ Status section.
   permanent. Either clean them up to match these standards or remove them.
 - Periodically review recently added files for duplication against the
   existing codebase. It's cheap, and it catches drift before it compounds.
+- Build only what the current task needs. No speculative parameters,
+  abstractions, config options or code paths for features that don't exist
+  yet.
+- Delete unused exports, imports, dependencies, files and constants in the
+  same PR that stops using them.
+- A new dependency needs a one-line reason in the PR description. Prefer
+  what is already installed or the standard library.
 
 ## Docs sync
 
@@ -143,8 +150,19 @@ in that area. It isn't a scheduled audit.
 
 - All changes go on feature/working branches. No direct commits to `stage` or
   `main`.
-- Merging is manual only: feature branch → `stage` (test) → `main`
-  (production). No automated or Claude-initiated merges into either branch.
+- Claude merges its own feature PRs into `stage` once the pre-merge
+  checklist below passes, using `gh pr merge --merge --delete-branch`.
+  Merging into `stage` deploys through CI. After each merge, watch the Deploy
+  Stage run to a conclusion and report pass or fail. A failed deploy gets
+  fixed before any further merge.
+- Do not merge, and stop to ask Elise, when a change is destructive or hard
+  to reverse: `cdk diff` shows a delete or replacement of any resource, the
+  change touches IAM or OIDC trust, or it alters a DynamoDB key schema or
+  GSI.
+- Promotion `stage` → `main` happens only when Elise says "promote". Then
+  Claude opens the PR (base `main`, head `stage`), merges it, watches the
+  Deploy Prod run to a conclusion, and checks `/health` on prod. Never
+  promote on its own.
 - **Every PR's base branch is `stage`, never `main`.** `gh pr create` defaults
   to the repo's default branch, so pass `--base stage` explicitly every time.
   The one exception is the recurring `stage` → `main` promotion PR, which is
@@ -152,11 +170,14 @@ in that area. It isn't a scheduled audit.
 - Pushes to `stage` and `main` deploy automatically through GitHub Actions
   (`deploy-stage.yml`, `deploy.yml`; see CI/CD in `docs/ARCHITECTURE.md`). A
   merge is a deploy.
-- Do not run `cdk bootstrap` or `cdk deploy`. They create billed AWS resources
-  and are run manually by Elise. `cdk synth` and `cdk diff` are fine.
+- Never run `cdk bootstrap`. `cdk synth` and `cdk diff` are always fine. Run
+  `cdk deploy` only when the prompt names the stack, and only after a clean
+  `cdk diff`. Because there is no TTY, pass `--require-approval never` in
+  that case only.
 - **Branch naming:** `feature/short-description` for new functionality,
   `fix/short-description` for bug fixes, `refactor/short-description` for
-  cleanup with no behavior change.
+  cleanup with no behavior change, `docs/short-description` for
+  documentation-only changes.
 - **One branch per logical unit of work.** Don't let a branch accumulate
   unrelated changes. It keeps diffs reviewable and isolates what broke if
   something did.
@@ -170,6 +191,10 @@ in that area. It isn't a scheduled audit.
   3. Read through the diff for duplicated logic, functions or files that no
      longer have one clear job, and names that no longer match what the code
      does.
+  4. Bloat check: every new file, export and dependency has a reason. No
+     unused imports, exports, constants or dependencies remain. Nothing was
+     added for a feature that doesn't exist yet. Before adding a helper,
+     search the codebase for an existing one.
 - Commit messages: a short present-tense summary line (`Add task router`,
   `Fix GSI key name`). Add a body only when the "why" isn't obvious from the
   diff.
@@ -183,9 +208,9 @@ in that area. It isn't a scheduled audit.
   values Elise needs to act on (AWS CLI commands, env var names, URLs) as a
   fenced code block, not prose or markdown with inline bold and bullets. Prose
   formatting doesn't paste cleanly outside GitHub; a code block does.
-- **Flag when stage verification is needed.** Before calling a PR ready to
-  merge, state plainly whether the change needs manual testing on the stage
-  environment first, and why. This applies to new deploy config, IAM or OIDC
+- **Flag when stage verification is needed.** State plainly whether the
+  change needs verification on the deployed stage environment before it is
+  promoted to `main`, and why. This applies to new deploy config, IAM or OIDC
   changes, schema or GSI changes, and anything specific to Lambda, API Gateway,
   or Cognito that local checks can't exercise. Put it in the PR description
   (e.g., "Needs a stage pass before merging to main: <specific reason>"). Don't

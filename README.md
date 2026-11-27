@@ -84,9 +84,12 @@ Backend infra is defined with **AWS CDK (TypeScript)** in `infra/`. See
 
 ## Repo flow
 
-Feature branch → `stage` (test) → `main` (production). Merging is manual
-only, and a merge triggers an automatic deploy. Full workflow rules
-(branch naming, PR base branch, pre-merge checklist, reporting): see
+Feature branch → `stage` (test) → `main` (production), and every merge
+triggers an automatic deploy. Claude merges its own feature PRs into
+`stage` once the pre-merge checklist passes, except destructive or
+hard-to-reverse changes, which wait for Elise. `stage` is promoted to
+`main` only when Elise says "promote". Full workflow rules (branch naming,
+PR base branch, pre-merge checklist, deploy rules, reporting): see
 [`CLAUDE.md`](./CLAUDE.md).
 
 ## Status

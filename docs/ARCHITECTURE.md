@@ -389,8 +389,12 @@ worth its own UI, given how much this app is expected to keep growing.
 
 - GitHub repo, feature/working branches only. Branch naming, the
   pre-merge checklist, and reporting rules are in `CLAUDE.md` (Git workflow).
-- Manual merge: feature branch → `stage` (test) → `main` (production) — no
-  automated or agent-initiated merges into either branch
+- Flow: feature branch → `stage` (test) → `main` (production). Claude
+  merges its own feature PRs into `stage` once the pre-merge checklist
+  passes and watches the Deploy Stage run to a conclusion. Changes that are
+  destructive or hard to reverse (a resource delete or replacement in
+  `cdk diff`, IAM or OIDC trust, a DynamoDB key schema or GSI) wait for
+  Elise. `stage` → `main` promotion happens only when Elise says "promote".
 - Every PR targets `stage`. The `stage` → `main` promotion PR is the only PR
   that targets `main`.
 - Pushes to `stage` and `main` deploy automatically (see CI/CD below), so a
@@ -405,8 +409,9 @@ worth its own UI, given how much this app is expected to keep growing.
 
 - **GitHub Actions:** `deploy-stage.yml` runs on push/merge to `stage`;
   `deploy.yml` runs on push/merge to `main`. Merging the branch is what
-  should trigger the actual AWS deploy — no separate manual `cdk deploy`
-  step once this is wired up.
+  triggers the AWS deploy. `cdk deploy` runs outside CI only when a task
+  names the stack, after a clean `cdk diff`; `cdk bootstrap` is never run
+  by Claude.
 - **Auth: OIDC federation, not long-lived access keys.** GitHub Actions
   authenticates to AWS via a trust relationship (GitHub's OIDC provider +
   an IAM role scoped to this specific repo), getting short-lived,
