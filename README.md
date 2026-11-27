@@ -15,8 +15,8 @@ Six tabs:
 - **Calendar** — full month/week view with read/write Google Calendar
   access; tasks with a deadline or time slot get their own real calendar
   event automatically
-- **To-Dos** — one unified hierarchy (Life Areas → Projects → Tasks →
-  Subtasks) that works equally well for a quick grocery list or a fully
+- **To-Dos** — one unified hierarchy (Areas → Projects → Tasks →
+  Subtasks, where each Area is a Life, Work, or Project Area) that works equally well for a quick grocery list or a fully
   structured initiative — a customizable Priority Ladder seeded from
   Maslow's hierarchy, and three interchangeable views (List, Kanban,
   Weekly Sprint)
@@ -28,14 +28,17 @@ Six tabs:
 - **Journal** — dated reflection notes, plus a general-purpose AI agent
   that can create, edit, or delete tasks, budget cards, goals, and calendar
   events on request
-- **Team collaboration** — any Life Area can be manually shared with a
+- **Team collaboration** — any Area can be manually shared with a
   Workspace (multiple members, growing beyond one partner); shared Tasks
   support assignment, push notifications, and a shared agent conversation
   separate from your private one — see `WORKSPACES.md`
 - **Clients & Invoicing** (hamburger menu, alongside Settings/Profile) —
-  mark a Project as a paid work role with a rate, log billable hours
-  against it, and generate real invoices for external clients — see
-  `CLIENTS-INVOICING.md`
+  set flat or hourly contracts per engagement, log billable hours and
+  agent token usage against them, and generate real invoices for external
+  clients — see `CLIENTS-INVOICING.md`
+- **Agent workers** — external agents (a dispatcher and a worker on the
+  user's own machines) use the API as a task queue, post progress back to
+  the task, and log token usage for billing — see `AGENT-WORKERS.md`
 
 This isn't a generic budgeting or habit-tracking app — it's shaped around
 one specific life, on purpose.
@@ -62,8 +65,11 @@ deploy flow, and each tab's behavioral design. See
 [`DATA-MODEL.md`](./docs/DATA-MODEL.md) for the full DynamoDB schema and API
 endpoint list. See [`AGENT.md`](./docs/AGENT.md) for the Journal tab AI agent's
 design. See [`WORKSPACES.md`](./docs/WORKSPACES.md) for team collaboration and
-shared Life Areas. See [`CLIENTS-INVOICING.md`](./docs/CLIENTS-INVOICING.md)
-for time tracking and invoicing. See [`CLAUDE.md`](./CLAUDE.md) for the
+shared Areas. See [`CLIENTS-INVOICING.md`](./docs/CLIENTS-INVOICING.md)
+for time tracking, contracts and invoicing. See
+[`AGENT-WORKERS.md`](./docs/AGENT-WORKERS.md) for agent workers, delegated
+access, and token budgets. See [`ROADMAP.md`](./docs/ROADMAP.md) for
+potential, uncommitted additions. See [`CLAUDE.md`](./CLAUDE.md) for the
 coding standards any Claude agent working in this repo should follow.
 
 ## Getting started
@@ -94,4 +100,4 @@ PR base branch, pre-merge checklist, deploy rules, reporting): see
 
 ## Status
 
-Backend (`infra/`, `backend/`) is deployed to a `stage` AWS environment with the Priority Levels, Life Areas, Projects and Tasks routers plus `/health`, on the DynamoDB data-access layer. Requests are authenticated with a Cognito user pool authorizer. Production runs the same foundation stack. `stage` deploys from GitHub Actions on push to `stage`, and `prod` on push to `main`, both through OIDC. Design is complete for all six tabs plus team collaboration. `apps/mobile` and `apps/web` have not been scaffolded yet. See "Open questions" in `ARCHITECTURE.md` and `DATA-MODEL.md` for outstanding decisions.
+Backend (`infra/`, `backend/`) is deployed to a `stage` AWS environment with the Priority Levels, Life Areas, Projects and Tasks routers plus `/health`, on the DynamoDB data-access layer. Requests are authenticated with a Cognito user pool authorizer. Production runs the same foundation stack. `stage` deploys from GitHub Actions on push to `stage`, and `prod` on push to `main`, both through OIDC. Design is complete for all six tabs plus team collaboration. Designed but not yet implemented: the rename of Life Areas to Areas with a `kind` (life / work / project), Clients, Contracts and time entries with agent token usage, and delegated access plus the task queue for agent workers (`AGENT-WORKERS.md`). `apps/mobile` and `apps/web` have not been scaffolded yet. See "Open questions" in `ARCHITECTURE.md` and `DATA-MODEL.md` for outstanding decisions.
