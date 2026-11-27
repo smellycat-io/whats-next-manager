@@ -362,10 +362,19 @@ worth its own UI, given how much this app is expected to keep growing.
 
 - **API Gateway + Lambda** — Express app via `serverless-http`, same pattern
   used on other projects for familiarity, but its own separate deployment
-- **CORS enabled on API Gateway** — required now that a browser client
-  exists. Mobile apps aren't subject to browser same-origin policy, but
-  `apps/web` is — this is a real infra change to `api-construct.ts`, not
-  just a client-side concern.
+- **CORS on API Gateway** — required once the browser client exists.
+  Mobile apps aren't subject to browser same-origin policy, but `apps/web`
+  is — this is a real infra change to `api-construct.ts`, not just a
+  client-side concern. Not yet implemented; `OPTIONS` requests are
+  already unauthenticated so preflight can be handled when it is added.
+- **Request authentication** — API Gateway's Cognito user pool authorizer
+  verifies a Cognito **access token** (`Authorization` header, scope
+  `aws.cognito.signin.user.admin`) on every method except `GET /health`
+  and `OPTIONS`. The backend reads the caller's id only from the verified
+  `sub` claim that API Gateway passes through (`auth/current-user.ts`),
+  never from a client-supplied header, and responds 401 when there are no
+  verified claims. There is no local auth-bypass mode; tests and local
+  runs mock the claims object.
 - **DynamoDB** — single-table design (full schema in `DATA-MODEL.md`)
 - **Cognito** — own user pool, separate from any other project's auth,
   structured for real multi-tenant/team use from the start (see

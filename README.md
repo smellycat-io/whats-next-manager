@@ -91,9 +91,4 @@ only, and a merge triggers an automatic deploy. Full workflow rules
 
 ## Status
 
-Backend (`infra/`, `backend/`) is live on a `stage` AWS environment — one
-resource router (`/health`) implemented, DynamoDB data-access layer built
-and verified against the real deployed table. Design is complete for all
-six tabs plus team collaboration. `apps/mobile` and `apps/web` have not
-been scaffolded yet. See "Open questions" in `ARCHITECTURE.md` and
-`DATA-MODEL.md` for outstanding decisions.
+Backend (`infra/`, `backend/`) is deployed to a `stage` AWS environment with the Priority Levels, Life Areas, Projects and Tasks routers plus `/health`, on the DynamoDB data-access layer. Requests are authenticated with a Cognito user pool authorizer. Production runs the same foundation stack. `stage` deploys from GitHub Actions on push to `stage`, and `prod` on push to `main`, both through OIDC. Design is complete for all six tabs plus team collaboration. `apps/mobile` and `apps/web` have not been scaffolded yet. See "Open questions" in `ARCHITECTURE.md` and `DATA-MODEL.md` for outstanding decisions.
