@@ -15,8 +15,9 @@ infra-as-code choice below accounts for long-term growth).
 
 For the DynamoDB schema and API endpoint list, see `DATA-MODEL.md`. For the
 Journal tab's AI agent design, see `AGENT.md`. For team collaboration and
-shared Life Areas, see `WORKSPACES.md`. For time tracking and invoicing,
-see `CLIENTS-INVOICING.md`. This doc covers the stack, deploy flow, and
+shared Areas, see `WORKSPACES.md`. For time tracking, contracts and
+invoicing, see `CLIENTS-INVOICING.md`. For external agent workers that use
+the API as a task queue, see `AGENT-WORKERS.md`. This doc covers the stack, deploy flow, and
 each tab's behavioral design.
 
 ## Navigation (bottom tabs)
@@ -60,11 +61,11 @@ the calendar:
 
 **Slotting logic:**
 - An unscheduled task is matched to the next open block whose
-  `lifeAreaIds` overlaps with the task's effective Life Area tags (its own
+  `areaIds` overlaps with the task's effective Area tags (its own
   direct tags, or its project's, following the same resolution order used
   for priority). No name-matching involved — both sides reference actual
-  Life Area records directly (see `DATA-MODEL.md`). A task tagged with
-  multiple Life Areas may match more than one block — matched against
+  Area records directly (see `DATA-MODEL.md`). A task tagged with
+  multiple Areas may match more than one block — matched against
   whichever open block appears first.
 - Within a block, priority determines *display order*, not placement — the
   highest-priority matching task shows first; others roll to the next
@@ -143,32 +144,40 @@ gets an **actual calendar event created for it**:
 
 ## To-Dos tab structure
 
-**One unified system** — Life Areas → Projects → Tasks → Subtasks. What
+**One unified system** — Areas → Projects → Tasks → Subtasks. What
 were originally designed as separate "Simple Lists" (groceries, packing
 lists) are fully unified into this hierarchy now: a quick list is just a
 Project, its items are ordinary Tasks with the full feature set available
-(priority, Life Area tags, deadline, status, subtasks) but left blank when
+(priority, Area tags, deadline, status, subtasks) but left blank when
 not needed — no separate entity, no restricted task shape, no
 `isSimpleList` flag. See `DATA-MODEL.md` for the underlying schema note.
 
-- **Life Area** — a domain of life (e.g., Personal, Work, Family, Side
-  Hustles). Each Life Area has a **default priority level** (references the
-  Priority Ladder) — e.g., Family → Love/Belonging, Side Hustles →
-  Esteem/Self-Actualization.
-- **Project** — lives inside one or more Life Areas (many-to-many — e.g., a
+- **Area** — a domain the user organizes work and life into. Every Area
+  has a **kind**, which decides how its work is billed (see
+  `CLIENTS-INVOICING.md`):
+  - **Life Area** — personal life (e.g., Personal, Family). Never billed.
+  - **Work Area** — paid work (e.g., PIN). Billable through contracts.
+  - **Project Area** — a hybrid between life and work (e.g., What's
+    Next): not billable now, but might be packaged and sold later, so its
+    cost is tracked separately.
+
+  Each Area has a **default priority level** (references the Priority
+  Ladder) — e.g., Family → Love/Belonging, What's Next →
+  Esteem/Self-Actualization. Not yet implemented: `kind`, and the rename
+  from Life Areas; the deployed routers still use `/life-areas`.
+- **Project** — lives inside one or more Areas (many-to-many — e.g., a
   side-hustle project can be tagged under both "Family" and "Security" at
   once, since it can serve more than one purpose). A quick list (groceries,
   packing) is simply a Project a user chooses to keep lightweight — same
   entity, no special case.
 - **Task** — lives inside a project, **or stands alone with no project**
   (e.g., everyday to-dos like "call the vet" that don't belong to any
-  initiative). Tasks can also be **independently multi-tagged with Life
-  Areas**, bypassing the project's tags entirely when set directly on the
+  initiative). Tasks can also be **independently multi-tagged with Areas**, bypassing the project's tags entirely when set directly on the
   task — this is the same mechanism that lets a standalone task (with no
-  project at all) still carry Life Area tags and inherit a default priority
+  project at all) still carry Area tags and inherit a default priority
   level.
 - **Default priority resolution:** a task's effective priority level
-  defaults to the highest-urgency level among whichever Life Area tags
+  defaults to the highest-urgency level among whichever Area tags
   apply to it — its own direct tags if set, otherwise its project's tags
   (e.g., Family→Love/Belonging + Security→Safety resolves to Safety, since
   that's higher on the ladder). Always manually overridable per task,
@@ -200,10 +209,12 @@ switching applies uniformly to every list/project, quick or structured:
 
 - **List** — sorted by Priority Ladder position, then deadline, grouped by
   project. Standalone tasks (no project) group under an implicit "No
-  Project" bucket within their tagged Life Area, or across all Life Areas
+  Project" bucket within their tagged Area, or across all Areas
   if untagged.
-- **Kanban** — status-based columns (`Backlog / To Do / In Progress /
-  Done`). Requires a `status` field on tasks, separate from `completed`
+- **Kanban** — status-based columns (`Unsorted / Backlog / To Do / In
+  Progress / Done`). `Unsorted` holds tasks dropped in from the phone (or
+  later, email) that haven't been sorted into an Area and project yet;
+  the dispatcher in `AGENT-WORKERS.md` moves them out. Requires a `status` field on tasks, separate from `completed`
   (moving a card to "Done" sets `completed: true` automatically). Drag
   between columns.
 - **Weekly Sprint** — days-of-week as columns instead of status; tasks
@@ -286,11 +297,11 @@ Two goal types:
   or an agent-created goal like "save $1,137 toward comfy"). Card shows a
   progress bar toward the target.
 
-**Life Area and Priority Ladder integration** — same mechanism as Tasks:
-- Every goal can be tagged with one or more Life Areas (many-to-many, same
+**Area and Priority Ladder integration** — same mechanism as Tasks:
+- Every goal can be tagged with one or more Areas (many-to-many, same
   as Projects/Tasks)
 - Every goal has an effective priority level, defaulting from its tagged
-  Life Area(s) using the same highest-urgency-wins resolution used
+  Area(s) using the same highest-urgency-wins resolution used
   elsewhere, manually overridable per goal
 
 **Screen organization:** grouped by type — a **Tally** section and a
@@ -375,13 +386,21 @@ worth its own UI, given how much this app is expected to keep growing.
   never from a client-supplied header, and responds 401 when there are no
   verified claims. There is no local auth-bypass mode; tests and local
   runs mock the claims object.
+- **Delegated access** — an agent worker's service user can act on a
+  user's data by sending `X-Act-As-User`, honored only when a `DELEGATE`
+  record for that pair exists and only on an allowlist of routes. The
+  backend then sets `req.userId` to the owner and `req.actorUserId` to
+  the service user. Full design in `AGENT-WORKERS.md`. Not yet
+  implemented.
 - **DynamoDB** — single-table design (full schema in `DATA-MODEL.md`)
 - **Cognito** — own user pool, separate from any other project's auth,
   structured for real multi-tenant/team use from the start (see
-  `WORKSPACES.md`). **Two app clients** — one for mobile, one for web —
-  so each platform's access can be audited/revoked independently, even
-  though both are public clients with no secret and hit the same user
-  pool and API.
+  `WORKSPACES.md`). **One app client per platform** — mobile, web, and
+  agent workers — so each one's access can be audited/revoked
+  independently. Mobile and web are public clients with no secret; the
+  agent client is confidential, with a secret, since workers run on
+  machines the user controls (see `AGENT-WORKERS.md`). Only the mobile
+  client exists in `auth-construct.ts` so far.
 - **S3** — used for exports (PDF/CSV budget or goal snapshots) and for
   hosting the built `apps/web` static bundle behind CloudFront
 

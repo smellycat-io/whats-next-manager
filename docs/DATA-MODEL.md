@@ -8,27 +8,31 @@ though this app's infrastructure is entirely separate (own AWS account/stack
 For the *behavior* built on top of these entities (Daily tab slotting,
 priority inheritance, view switching, etc.), see `ARCHITECTURE.md` — this
 doc is schema and API only. For the Journal tab agent's design, see
-`AGENT.md`. For team collaboration and shared Life Areas, see
-`WORKSPACES.md`. For time tracking and invoicing, see
-`CLIENTS-INVOICING.md`.
+`AGENT.md`. For team collaboration and shared Areas, see
+`WORKSPACES.md`. For time tracking, contracts and invoicing, see
+`CLIENTS-INVOICING.md`. For external agent workers (delegated access, the
+task queue, token budgets), see `AGENT-WORKERS.md`.
 
 ## Table
 
 | PK | SK | type | attributes |
 |---|---|---|---|
 | `USER#<id>` | `BUDGET_CARD#<cardId>` | `BUDGET_CARD` | name, cardType (income/expense/business/computed), categoryIds (array — which categories feed this card), target (optional), order, linkedGoalId + unitValue (business cards only — revenue = linked goal's count × unitValue) |
-| `USER#<id>` | `GOAL#<goalId>` | `GOAL` | name, cadence, count, goalType (tally/target), target (optional — required for target-type goals), lifeAreaIds (array — many-to-many, same as Projects/Tasks), priorityLevelId (optional override — defaults from lifeAreaIds using the same resolution logic as Tasks) |
+| `USER#<id>` | `GOAL#<goalId>` | `GOAL` | name, cadence, count, goalType (tally/target), target (optional — required for target-type goals), areaIds (array — many-to-many, same as Projects/Tasks), priorityLevelId (optional override — defaults from areaIds using the same resolution logic as Tasks) |
 | `USER#<id>` | `JOURNAL#<timestamp>` | `JOURNAL_ENTRY` | text, date |
 | `USER#<id>` | `SCHEDULE#<day>` | `SCHEDULE_OVERRIDE` | blocks (only if the schedule becomes editable in-app) |
-| `USER#<id>` | `TASK#<taskId>` | `TASK` | projectId (optional — omitted for standalone tasks), name, description, deadline, priorityLevelId, lifeAreaIds (optional array — overrides project's tags when set), status (Backlog/To Do/In Progress/Done), completed, subtasks (array of `{id, name, completed}`), linkedCalendarEventId (optional — set once a deadline or time-slot triggers calendar sync), assignedToUserId (optional — see `WORKSPACES.md`) |
+| `USER#<id>` | `TASK#<taskId>` | `TASK` | projectId (optional — omitted for standalone tasks), name, description, deadline, priorityLevelId, areaIds (optional array — overrides project's tags when set), status (Unsorted/Backlog/To Do/In Progress/Done), completed, subtasks (array of `{id, name, completed}`), linkedCalendarEventId (optional — set once a deadline or time-slot triggers calendar sync), assignedToUserId (optional — see `WORKSPACES.md`), source (phone/web/agent), createdAt, updatedAt, createdBy, agentState, agentClaimedBy, agentClaimedAt, agentHeartbeatAt (agent fields optional — see `AGENT-WORKERS.md`) |
+| `USER#<id>` | `TASK_UPDATE#<taskId>#<timestamp>` | `TASK_UPDATE` | kind (progress/result/error), text, actorUserId — see `AGENT-WORKERS.md` |
 | `USER#<id>` | `PRIORITY_LEVEL#<levelId>` | `PRIORITY_LEVEL` | name, order |
-| `USER#<id>` | `LIFE_AREA#<areaId>` | `LIFE_AREA` | name, defaultPriorityLevelId, sharedWorkspaceId (optional — see `WORKSPACES.md`) |
-| `USER#<id>` | `PROJECT#<projectId>` | `PROJECT` | lifeAreaIds (array — many-to-many), name, isWorkRole (optional boolean), marketRateMin, marketRateMax, actualPayRate, payUnit (hourly/flat/per-project) — pay-rate fields only meaningful when isWorkRole is true, see `CLIENTS-INVOICING.md` |
-| `USER#<id>` | `CLIENT#<clientId>` | `CLIENT` | name, contactName, contactEmail, billingAddress (optional), projectIds (array), sharedWorkspaceId (optional, same mechanism as Life Area), notes — see `CLIENTS-INVOICING.md` |
-| `USER#<id>` | `TIME_ENTRY#<entryId>` | `TIME_ENTRY` | projectId, userId, date, hours, billable (boolean), rateSnapshot, invoiced (boolean), notes — see `CLIENTS-INVOICING.md` |
-| `USER#<id>` | `INVOICE#<invoiceId>` | `INVOICE` | clientId, invoiceNumber, dateRangeStart, dateRangeEnd, timeEntryIds (array), totalAmount (computed), status (draft/sent/paid), createdAt, sentAt, paidAt, dueDate, notes, pdfS3Key — see `CLIENTS-INVOICING.md` |
-| `USER#<id>` | `FOCUS_BLOCK#<blockId>` | `FOCUS_BLOCK` | day, startTime, endTime, lifeAreaIds (array — many-to-many, same shape as Project/Task/Goal; a task's effective Life Area tags are matched against this for slotting) |
-| `USER#<id>` | `SETTINGS` | `SETTINGS` | autoSlotTasks (boolean), agentAutoExecute (boolean — when false [default], the Journal agent confirms actions before writing; see `AGENT.md`), agentMessagesToday (counter, resets daily — enforces the agent's rate-limit safety net, see `AGENT.md`), expoPushToken (optional — see `WORKSPACES.md`) |
+| `USER#<id>` | `AREA#<areaId>` | `AREA` | name, kind (life/work/project), defaultPriorityLevelId, sharedWorkspaceId (optional — see `WORKSPACES.md`) |
+| `USER#<id>` | `PROJECT#<projectId>` | `PROJECT` | areaIds (array — many-to-many, at most one Work Area), name, isWorkRole (optional boolean), marketRateMin, marketRateMax (reference range, only meaningful when isWorkRole is true) — billing terms live on `CONTRACT`, see `CLIENTS-INVOICING.md` |
+| `USER#<id>` | `CLIENT#<clientId>` | `CLIENT` | name, contactName, contactEmail, billingAddress (optional), sharedWorkspaceId (optional, same mechanism as Area), notes, archived — see `CLIENTS-INVOICING.md` |
+| `USER#<id>` | `CONTRACT#<contractId>` | `CONTRACT` | issuerAreaId (optional — absent when the user is the issuer), clientId, projectIds (array), billingMode (invoiced/tracking), payUnit (hourly/flat/per-project), rate, flatRatePeriod (monthly/one-time), tokenBilling (passthrough/included), tokenMarkup, startDate, endDate, archived — see `CLIENTS-INVOICING.md` |
+| `USER#<id>` | `TIME_ENTRY#<entryId>` | `TIME_ENTRY` | projectId, taskId (optional), userId, actorType (human/agent), date, hours, billable (boolean), contractSnapshots (array), invoicedContractIds (array), notes; agent entries add provider, model, costType (paid/local), agentRunId, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, costUsd, costBasis (api-equivalent/actual) — see `CLIENTS-INVOICING.md` |
+| `USER#<id>` | `INVOICE#<invoiceId>` | `INVOICE` | issuerAreaId (optional), clientId, contractIds (array), invoiceNumber (sequential per issuer), dateRangeStart, dateRangeEnd, timeEntryIds (array), totalAmount (computed), status (draft/sent/paid), createdAt, sentAt, paidAt, dueDate, notes, pdfS3Key — see `CLIENTS-INVOICING.md` |
+| `USER#<id>` | `FOCUS_BLOCK#<blockId>` | `FOCUS_BLOCK` | day, startTime, endTime, areaIds (array — many-to-many, same shape as Project/Task/Goal; a task's effective Area tags are matched against this for slotting) |
+| `USER#<id>` | `SETTINGS` | `SETTINGS` | autoSlotTasks (boolean), agentAutoExecute (boolean — when false [default], the Journal agent confirms actions before writing; see `AGENT.md`), agentMessagesToday (counter, resets daily — enforces the agent's rate-limit safety net, see `AGENT.md`), expoPushToken (optional — see `WORKSPACES.md`), tokenBudgets (array), budgetReservePercent (see `AGENT-WORKERS.md`) |
+| `USER#<id>` | `DELEGATE#<serviceSub>` | `DELEGATE` | label, createdAt — grants a service user access to this user's data, see `AGENT-WORKERS.md` |
 | `USER#<id>` | `TRANSACTION#<txnId>` | `TRANSACTION` | date, description, amount, merchantName, categoryId — currently manually entered; `plaidTransactionId` reserved for future Plaid phase |
 | `USER#<id>` | `CATEGORY#<categoryId>` | `CATEGORY` | name, budgetCardId (which card this category rolls up into), plaidCategoryMap (array — unused until Plaid phase) |
 | `USER#<id>` | `AGENT_MESSAGE#<timestamp>` | `AGENT_MESSAGE` | role (user/assistant), text, actionsTaken (array — tasks/projects/budget-cards/goals created or edited by this message, for an audit trail) |
@@ -56,10 +60,17 @@ Budget tab logic for the phased plan.
   initially; `SCHEDULE_OVERRIDE` items are only needed once in-app editing
   is built.
 - `TASK.projectId` is optional — a task can stand alone with no project.
+- `AREA.kind` decides billing: `work` Areas are billable through
+  contracts; `project` and `life` Areas are tracked as the user's own cost.
+  A project or task may have at most one Work Area among its effective
+  Area tags — see `CLIENTS-INVOICING.md`.
+- `AREA` and `areaIds` were previously `LIFE_AREA` and `lifeAreaIds`.
+  Existing items are migrated once, with `kind` defaulting to `life`. Not
+  yet implemented: the deployed routers still use the old names.
 - **Simple Lists are fully unified with Projects/Tasks — no separate
   entity, no restricted feature set.** A "grocery list" is just a
   `PROJECT` like any other; its items are ordinary `TASK` records with the
-  full feature set available (priority level, Life Area tags, deadline,
+  full feature set available (priority level, Area tags, deadline,
   status, subtasks) — simply left blank when not needed. There is no
   `isSimpleList` flag or special-cased task shape; the only difference
   between a quick list and a fully-structured project is how much of the
@@ -68,14 +79,14 @@ Budget tab logic for the phased plan.
   Calendar event once it has a deadline or time slot — see
   `ARCHITECTURE.md` Task → Calendar sync for the full create/update/delete
   lifecycle.
-- `TASK.lifeAreaIds`, when set, overrides the parent project's
-  `lifeAreaIds` for that task (see priority/slotting resolution logic in
+- `TASK.areaIds`, when set, overrides the parent project's
+  `areaIds` for that task (see priority/slotting resolution logic in
   `ARCHITECTURE.md`).
-- `PROJECT.lifeAreaIds` and `TASK.lifeAreaIds` are both many-to-many —
-  a project or task can belong to more than one Life Area at once.
-- `GOAL.lifeAreaIds` and `GOAL.priorityLevelId` follow the exact same
+- `PROJECT.areaIds` and `TASK.areaIds` are both many-to-many —
+  a project or task can belong to more than one Area at once.
+- `GOAL.areaIds` and `GOAL.priorityLevelId` follow the exact same
   tagging and priority-resolution rules as `TASK` (see above) — a goal can
-  belong to multiple Life Areas, and its effective priority defaults to the
+  belong to multiple Areas, and its effective priority defaults to the
   highest-urgency level among them unless manually overridden.
 - `PLAID_ITEM.accessTokenRef` will store a **KMS-encrypted field on the
   user's record** (not AWS Secrets Manager) once the Plaid phase begins —
@@ -119,18 +130,25 @@ Budget tab logic for the phased plan.
 - `GET /schedule` / `PUT /schedule` (optional, only if schedule becomes
   editable)
 - `GET /tasks` / `POST /tasks` / `PUT /tasks/:id` / `DELETE /tasks/:id`
-- `GET /life-areas` / `POST /life-areas` / `PUT /life-areas/:id` / `DELETE
-  /life-areas/:id`
+- `GET /areas` / `POST /areas` / `PUT /areas/:id` / `DELETE
+  /areas/:id`
 - `GET /projects` / `POST /projects` / `PUT /projects/:id` / `DELETE
   /projects/:id` (also covers what were previously "Simple Lists" — see
   unification note above)
-- `PUT /projects/:id/work-role` — sets/clears `isWorkRole` and pay-rate
-  fields on a Project (see `CLIENTS-INVOICING.md`)
+- `PUT /projects/:id/work-role` — sets/clears `isWorkRole` and the
+  market-rate range on a Project (see `CLIENTS-INVOICING.md`)
 - `GET /clients` / `POST /clients` / `PUT /clients/:id` / `DELETE
   /clients/:id`
+- `GET /contracts` / `POST /contracts` / `PUT /contracts/:id` / `DELETE
+  /contracts/:id`
+- `GET /usage/summary` / `GET /usage/budget`
+- `POST /tasks/:id/claim` / `POST /tasks/:id/heartbeat` / `GET
+  /tasks/:id/updates` / `POST /tasks/:id/updates`; `GET /tasks` accepts
+  `status`, `agentState` and `updatedSince` filters (see
+  `AGENT-WORKERS.md`)
 - `GET /time-entries` / `POST /time-entries` / `PUT /time-entries/:id` /
   `DELETE /time-entries/:id`
-- `GET /invoices` / `POST /invoices` (generates from selected time
+- `GET /invoices` / `POST /invoices` (generates from selected
   entries) / `GET /invoices/:id` / `PUT /invoices/:id` (status updates) /
   `GET /invoices/:id/pdf`
 - `GET /priority-levels` / `PUT /priority-levels` (bulk reorder) / `POST
@@ -162,7 +180,7 @@ Budget tab logic for the phased plan.
 - `GET /workspaces` / `POST /workspaces` / `PUT /workspaces/:id` /
   `DELETE /workspaces/:id`
 - `POST /workspaces/:id/members` / `DELETE /workspaces/:id/members/:userId`
-- `PUT /life-areas/:id/share` — sets or clears `sharedWorkspaceId`
+- `PUT /areas/:id/share` — sets or clears `sharedWorkspaceId`
 - `POST /workspace-agent/:workspaceId/chat` / `GET
   /workspace-agent/:workspaceId/messages`
 - `POST /settings/push-token` — registers a user's Expo push token

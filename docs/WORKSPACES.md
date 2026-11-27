@@ -2,22 +2,22 @@
 
 Personal use and team collaboration are **two layers of one data model**,
 not two separate apps. Everything designed elsewhere (Tasks, Projects,
-Life Areas, the Priority Ladder, the agent) works the same whether it's
-personal or shared — sharing is something you turn on for a Life Area,
+Areas, the Priority Ladder, the agent) works the same whether it's
+personal or shared — sharing is something you turn on for an Area,
 not a different mode of the app.
 
-## Core concept: shared Life Areas
+## Core concept: shared Areas
 
 - **`WORKSPACE`** — a named group with multiple members. Not capped at
   two; built to support a growing team from the start.
-- **Sharing is manual, at the Life Area level.** You choose to share a
-  specific Life Area (e.g., "SmellyCat/PIN") with a workspace. Once
-  shared, **everything tagged under that Life Area** — Projects, Tasks,
+- **Sharing is manual, at the Area level.** You choose to share a
+  specific Area (e.g., "SmellyCat/PIN") with a workspace. Once
+  shared, **everything tagged under that Area** — Projects, Tasks,
   Goals — becomes visible and editable to every workspace member, not
   just the original owner. There's no separate "team task" concept; it's
   the same Task entity, just reachable by more than one person once its
-  Life Area is shared.
-- Unsharing a Life Area (toggling `sharedWorkspaceId` off) returns it to
+  Area is shared.
+- Unsharing an Area (toggling `sharedWorkspaceId` off) returns it to
   being visible only to its original owner — no data migration needed
   either direction, since the entity's location in the table never
   changes (see Data model below).
@@ -69,7 +69,7 @@ not just an ownership lookup:
 
 1. Does the requesting user own this item directly? (Its `PK` is
    `USER#<requestingUserId>`.) → allowed.
-2. If not, does the item belong to a Life Area with a `sharedWorkspaceId`
+2. If not, does the item belong to an Area with a `sharedWorkspaceId`
    set, **and** is the requesting user a member of that workspace? →
    allowed.
 3. Otherwise → denied.
@@ -90,7 +90,7 @@ GSI**:
 |---|---|
 | `WORKSPACE` | New top-level item: `PK: WORKSPACE#<id>`, `SK: METADATA`. Attributes: name, memberUserIds (array), createdBy, createdAt |
 | Workspace membership (reverse lookup) | New item per member: `PK: USER#<memberId>`, `SK: WORKSPACE#<workspaceId>` — lets a user cheaply list their own workspaces without scanning |
-| `LIFE_AREA` | New optional attribute: `sharedWorkspaceId`. When set, this Life Area and everything tagged under it becomes workspace-visible. |
+| `AREA` | New optional attribute: `sharedWorkspaceId`. When set, this Area and everything tagged under it becomes workspace-visible. |
 | `TASK` | New optional attribute: `assignedToUserId` |
 | New GSI (`GSI1`) | Partition key: `sharedWorkspaceId` (sparse — only present on shared items), sort key: `type#id`. Lets the backend query "everything shared to workspace X" in one call, regardless of which user's partition originally owns each item. |
 | `WORKSPACE_AGENT_MESSAGE` | `PK: WORKSPACE#<workspaceId>`, `SK: timestamp`. Same shape as `AGENT_MESSAGE`, but shared/readable by all workspace members. |
@@ -101,7 +101,7 @@ GSI**:
 - `GET /workspaces` / `POST /workspaces` / `PUT /workspaces/:id` /
   `DELETE /workspaces/:id`
 - `POST /workspaces/:id/members` / `DELETE /workspaces/:id/members/:userId`
-- `PUT /life-areas/:id/share` — sets or clears `sharedWorkspaceId`
+- `PUT /areas/:id/share` — sets or clears `sharedWorkspaceId`
 - `POST /workspace-agent/:workspaceId/chat` — same shape as `/agent/chat`,
   scoped to a workspace's shared context and conversation log
 - `GET /workspace-agent/:workspaceId/messages`
@@ -110,7 +110,7 @@ GSI**:
 ## Open questions / not yet decided
 
 - Permission granularity within a workspace: can any member share/unshare
-  a Life Area, assign tasks to anyone, or does the original owner keep
+  an Area, assign tasks to anyone, or does the original owner keep
   some elevated control? Not yet decided — current design treats all
   members as equals once shared.
 - What happens to a Task's `assignedToUserId` if that user is later
