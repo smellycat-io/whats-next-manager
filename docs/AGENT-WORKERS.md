@@ -12,8 +12,8 @@ like any client.
 
 Implemented: the agent app client, delegated access (for the routers that
 exist so far: `/tasks`, `/areas`, `/projects`, `/priority-levels`), and
-the task lifecycle below. Not yet implemented: usage logging and the token
-budget, which depend on time entries (`CLIENTS-INVOICING.md`).
+the task lifecycle below, and agent time entries for usage logging. Not
+yet implemented: the token budget and `/usage` routes.
 
 ## Service user and delegated access
 

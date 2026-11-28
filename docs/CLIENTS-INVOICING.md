@@ -6,9 +6,9 @@ the **hamburger menu**, not the bottom tabs — alongside Settings and
 Profile — since it's a less-frequent, management-style task rather than a
 daily-use screen.
 
-Not yet implemented: everything in this doc. The deployed Projects router
-still carries the older project-level `actualPayRate` / `payUnit` fields,
-which move to `CONTRACT` as described below.
+Implemented: Clients, Contracts, and time entries (human and agent).
+Not yet implemented: the usage summary, invoices, and sharing Clients
+with a Workspace.
 
 ## Core concept: Work Areas, Projects, Contracts
 
@@ -53,9 +53,16 @@ a Workspace, so multiple team members logging work against the same
 client see one consistent Client record rather than duplicating it per
 person.
 
-Clients, Projects and Contracts are **archived, not deleted**, once any
-entry against them has been invoiced, so historical records stay intact.
-A delete request on an invoiced item archives it instead.
+Billing history is never deleted, so historical records stay intact:
+
+- **Contracts** — a delete request on a contract with invoiced entries
+  archives it instead (`archived: true`). One with no invoiced entries is
+  deleted.
+- **Clients** — a delete request on a client that any contract references
+  is refused (409); archive it with `PUT { archived: true }` instead.
+- **Time entries** — an invoiced entry can't be edited or deleted (409).
+
+Archived contracts no longer cover new work or count toward overlaps.
 
 ## Contracts
 
@@ -96,13 +103,14 @@ flow through the same reports and invoices.
 
 Common fields:
 
-- `projectId`, `taskId` (optional), `userId` (whose data this is),
+- `projectId`, `taskId` (optional), `createdBy` (who logged it: the user,
+  or an agent's service user), `createdAt`,
   `date`, `hours`, `billable` (boolean — not every logged hour needs to be
   billed), `notes`
 - `actorType` — `human` / `agent`
 - `contractSnapshots` — for every contract covering this project on this
-  date, its `contractId`, `payUnit`, `rate`, `tokenBilling` and
-  `tokenMarkup`, **captured at the moment of entry**, not looked up live
+  date, its `contractId`, `issuerAreaId`, `clientId`, `billingMode`,
+  `payUnit`, `rate`, `tokenBilling` and `tokenMarkup`, **captured at the moment of entry**, not looked up live
   at invoice time. If terms change later, past bills still reflect what
   was true when the work happened.
 - `invoicedContractIds` — contracts whose invoice already includes this
@@ -214,9 +222,9 @@ and the Journal agent are already split across tabs.
 |---|---|
 | `AREA` (extended) | + `kind` (life / work / project) |
 | `PROJECT` (extended) | + `isWorkRole` (boolean), `marketRateMin`, `marketRateMax` |
-| `CLIENT` | name, contactName, contactEmail, billingAddress (optional), sharedWorkspaceId (optional, same mechanism as Area), notes, archived |
-| `CONTRACT` | issuerAreaId (optional), clientId, projectIds (array), billingMode, payUnit, rate, flatRatePeriod, tokenBilling, tokenMarkup, startDate, endDate, archived |
-| `TIME_ENTRY` | projectId, taskId, userId, actorType, date, hours, billable, contractSnapshots, invoicedContractIds, notes; agent entries add provider, model, costType, agentRunId, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, costUsd, costBasis |
+| `CLIENT` | name, contactName, contactEmail, billingAddress (optional), sharedWorkspaceId (optional, same mechanism as Area — not yet implemented), notes, archived |
+| `CONTRACT` | name (optional), issuerAreaId (optional), clientId, projectIds (array), billingMode, payUnit, rate, flatRatePeriod, tokenBilling, tokenMarkup, startDate, endDate, archived |
+| `TIME_ENTRY` | projectId, taskId, createdBy, createdAt, actorType, date, hours, billable, contractSnapshots, invoicedContractIds, notes; agent entries add provider, model, costType, agentRunId, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, costUsd, costBasis |
 | `INVOICE` | issuerAreaId (optional), clientId, contractIds, invoiceNumber, dateRangeStart, dateRangeEnd, timeEntryIds (array), totalAmount (computed), status (draft/sent/paid), createdAt, sentAt, paidAt, dueDate, notes/terms, pdfS3Key |
 
 ## API endpoints (new)

@@ -37,3 +37,22 @@ export function assertOneOf<T extends string>(
     throw badRequest(`${fieldName} must be one of: ${allowed.join(", ")}`);
   }
 }
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Rejects a value that isn't a `YYYY-MM-DD` date. Absent values pass. */
+export function assertIsoDate(value: unknown, fieldName: string): asserts value is string | undefined {
+  if (value !== undefined && (typeof value !== "string" || !ISO_DATE.test(value))) {
+    throw badRequest(`${fieldName} must be a date in YYYY-MM-DD form`);
+  }
+}
+
+/** Rejects a value that isn't a finite number of zero or more. Absent values pass. */
+export function assertNonNegativeNumber(
+  value: unknown,
+  fieldName: string,
+): asserts value is number | undefined {
+  if (value !== undefined && (typeof value !== "number" || !Number.isFinite(value) || value < 0)) {
+    throw badRequest(`${fieldName} must be a number of zero or more`);
+  }
+}

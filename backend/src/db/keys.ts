@@ -19,6 +19,8 @@ export class SortKey {
 /** The one place each entity's sort-key prefix is spelled out. */
 export const sortKeys = {
   area: new SortKey("AREA#"),
+  client: new SortKey("CLIENT#"),
+  contract: new SortKey("CONTRACT#"),
   delegate: new SortKey("DELEGATE#"),
   priorityLevel: new SortKey("PRIORITY_LEVEL#"),
   project: new SortKey("PROJECT#"),
@@ -27,4 +29,5 @@ export const sortKeys = {
   // and sort by time. "TASK_UPDATE#" doesn't begin with "TASK#", so task
   // queries never pick these up.
   taskUpdate: new SortKey("TASK_UPDATE#"),
+  timeEntry: new SortKey("TIME_ENTRY#"),
 } as const;
