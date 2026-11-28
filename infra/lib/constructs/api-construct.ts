@@ -68,11 +68,12 @@ export class ApiConstruct extends Construct {
 
     const integration = new apigateway.LambdaIntegration(handler);
 
-    // Every method defaults to requiring a valid Cognito access token.
-    // API Gateway's Cognito authorizer validates ID tokens unless the method
-    // declares OAuth scopes, and then it validates access tokens instead.
-    // Access tokens from SRP sign-in carry this scope, so requiring it
-    // makes the API accept access tokens, the intended token for API calls.
+    // Every method except the public ones below requires a valid Cognito
+    // access token. API Gateway's Cognito authorizer validates ID tokens
+    // unless the method declares OAuth scopes, and then it validates access
+    // tokens instead. Access tokens from SRP and password sign-in carry this
+    // scope, so requiring it makes the API accept access tokens, the
+    // intended token for API calls.
     const authorizer = new apigateway.CognitoUserPoolsAuthorizer(
       this,
       "CognitoAuthorizer",
@@ -94,7 +95,6 @@ export class ApiConstruct extends Construct {
     this.api = new apigateway.RestApi(this, "Api", {
       deployOptions: { stageName: props.envName },
       defaultIntegration: integration,
-      defaultMethodOptions: requireCognitoAccessToken,
     });
 
     // Preflight requests never carry tokens, so OPTIONS stays open and goes
@@ -103,9 +103,17 @@ export class ApiConstruct extends Construct {
     const allowUnauthenticatedPreflight = (resource: apigateway.IResource) =>
       resource.addMethod("OPTIONS", integration, noAuth);
 
-    this.api.root.addMethod("ANY");
+    // Every ANY method requires a token. They're given the options
+    // explicitly, not through defaultMethodOptions: CDK merges defaults into
+    // the public methods too, and their OAuth scopes are invalid there.
+    const requireTokenForAnyMethod = (resource: apigateway.IResource) =>
+      resource.addMethod("ANY", integration, requireCognitoAccessToken);
+
+    requireTokenForAnyMethod(this.api.root);
     allowUnauthenticatedPreflight(this.api.root);
-    allowUnauthenticatedPreflight(this.api.root.addProxy({ anyMethod: true }));
+    const rootProxy = this.api.root.addProxy({ anyMethod: false });
+    requireTokenForAnyMethod(rootProxy);
+    allowUnauthenticatedPreflight(rootProxy);
 
     // Only the exact GET /health liveness check is public. API Gateway
     // doesn't fall back to the root {proxy+} once a request has matched the
@@ -113,6 +121,8 @@ export class ApiConstruct extends Construct {
     // so anything below /health still requires a token.
     const health = this.api.root.addResource("health");
     health.addMethod("GET", integration, noAuth);
-    allowUnauthenticatedPreflight(health.addProxy({ anyMethod: true }));
+    const healthProxy = health.addProxy({ anyMethod: false });
+    requireTokenForAnyMethod(healthProxy);
+    allowUnauthenticatedPreflight(healthProxy);
   }
 }
