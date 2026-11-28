@@ -390,8 +390,7 @@ worth its own UI, given how much this app is expected to keep growing.
   user's data by sending `X-Act-As-User`, honored only when a `DELEGATE`
   record for that pair exists and only on an allowlist of routes. The
   backend then sets `req.userId` to the owner and `req.actorUserId` to
-  the service user. Full design in `AGENT-WORKERS.md`. Not yet
-  implemented.
+  the service user. Full design in `AGENT-WORKERS.md`.
 - **DynamoDB** — single-table design (full schema in `DATA-MODEL.md`)
 - **Cognito** — own user pool, separate from any other project's auth,
   structured for real multi-tenant/team use from the start (see
@@ -399,8 +398,9 @@ worth its own UI, given how much this app is expected to keep growing.
   agent workers — so each one's access can be audited/revoked
   independently. Mobile and web are public clients with no secret; the
   agent client is confidential, with a secret, since workers run on
-  machines the user controls (see `AGENT-WORKERS.md`). Only the mobile
-  client exists in `auth-construct.ts` so far.
+  machines the user controls (see `AGENT-WORKERS.md`). The mobile and
+  agent clients exist in `auth-construct.ts`; web is added with
+  `apps/web`.
 - **S3** — used for exports (PDF/CSV budget or goal snapshots) and for
   hosting the built `apps/web` static bundle behind CloudFront
 

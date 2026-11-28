@@ -10,5 +10,6 @@ export const TEST_USER_ID = "test-user";
 
 export function requireUserId(req: Request, _res: Response, next: NextFunction) {
   req.userId = TEST_USER_ID;
+  req.actorUserId = TEST_USER_ID;
   next();
 }
