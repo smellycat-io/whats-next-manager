@@ -9,14 +9,14 @@ import {
   updateItem,
   userPk,
 } from "../db/client";
+import { sortKeys } from "../db/keys";
 import { badRequest, notFound } from "../http/errors";
 import { bodyOf, pickDefinedFields } from "../http/request-body";
-
-export const SK_PREFIX = "PROJECT#";
+import { assertAtMostOneWorkArea } from "../lib/areas";
 
 interface ProjectFields {
   name?: string;
-  lifeAreaIds?: string[];
+  areaIds?: string[];
 }
 
 interface WorkRoleFields {
@@ -27,15 +27,11 @@ interface WorkRoleFields {
   payUnit?: "hourly" | "flat" | "per-project";
 }
 
-export function skFor(id: string): string {
-  return `${SK_PREFIX}${id}`;
-}
-
-export function toProject(item: TableItem) {
+function toProject(item: TableItem) {
   return {
-    id: (item.sk as string).slice(SK_PREFIX.length),
+    id: sortKeys.project.idOf(item),
     name: item.name,
-    lifeAreaIds: (item.lifeAreaIds as string[] | undefined) ?? [],
+    areaIds: (item.areaIds as string[] | undefined) ?? [],
     // Pay-rate fields only meaningful when isWorkRole is true, per
     // CLIENTS-INVOICING.md — normalized to null/false here rather than
     // left absent, so API consumers don't have to check for presence.
@@ -51,20 +47,21 @@ export const projectsRouter = Router();
 projectsRouter.use(requireUserId);
 
 projectsRouter.get("/", async (req, res) => {
-  const items = await queryByPk(userPk(req.userId), SK_PREFIX);
+  const items = await queryByPk(userPk(req.userId), sortKeys.project.prefix);
   res.json(items.map(toProject));
 });
 
 projectsRouter.post("/", async (req, res) => {
-  const { name, lifeAreaIds } = bodyOf<ProjectFields>(req.body);
+  const { name, areaIds } = bodyOf<ProjectFields>(req.body);
   if (!name) throw badRequest("name is required");
+  await assertAtMostOneWorkArea(req.userId, areaIds ?? []);
 
   const item: TableItem = {
     pk: userPk(req.userId),
-    sk: skFor(randomUUID()),
+    sk: sortKeys.project.for(randomUUID()),
     type: "PROJECT",
     name,
-    lifeAreaIds: lifeAreaIds ?? [],
+    areaIds: areaIds ?? [],
   };
   await putItem(item);
   res.status(201).json(toProject(item));
@@ -73,9 +70,10 @@ projectsRouter.post("/", async (req, res) => {
 projectsRouter.put("/:id", async (req, res) => {
   const updates = pickDefinedFields(bodyOf<ProjectFields>(req.body), [
     "name",
-    "lifeAreaIds",
+    "areaIds",
   ]);
-  const updated = await updateItem(userPk(req.userId), skFor(req.params.id), updates);
+  if (updates.areaIds) await assertAtMostOneWorkArea(req.userId, updates.areaIds as string[]);
+  const updated = await updateItem(userPk(req.userId), sortKeys.project.for(req.params.id), updates);
   if (!updated) throw notFound("Project");
   res.json(toProject(updated));
 });
@@ -105,13 +103,13 @@ projectsRouter.put("/:id/work-role", async (req, res) => {
           ]),
         };
 
-  const updated = await updateItem(userPk(req.userId), skFor(req.params.id), updates);
+  const updated = await updateItem(userPk(req.userId), sortKeys.project.for(req.params.id), updates);
   if (!updated) throw notFound("Project");
   res.json(toProject(updated));
 });
 
 projectsRouter.delete("/:id", async (req, res) => {
-  const deleted = await deleteItem(userPk(req.userId), skFor(req.params.id));
+  const deleted = await deleteItem(userPk(req.userId), sortKeys.project.for(req.params.id));
   if (!deleted) throw notFound("Project");
   res.status(204).send();
 });
