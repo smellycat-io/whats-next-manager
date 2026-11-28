@@ -31,3 +31,6 @@ export const sortKeys = {
   taskUpdate: new SortKey("TASK_UPDATE#"),
   timeEntry: new SortKey("TIME_ENTRY#"),
 } as const;
+
+/** The one SETTINGS item per user has a fixed sort key, not a prefix. */
+export const SETTINGS_SK = "SETTINGS";

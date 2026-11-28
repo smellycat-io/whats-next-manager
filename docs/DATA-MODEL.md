@@ -155,7 +155,8 @@ Budget tab logic for the phased plan.
 - `GET /priority-levels` / `PUT /priority-levels` (bulk reorder) / `POST
   /priority-levels` / `DELETE /priority-levels/:id`
 - `GET /focus-blocks` / `PUT /focus-blocks`
-- `GET /settings` / `PUT /settings`
+- `GET /settings` / `PUT /settings` (only `tokenBudgets` and
+  `budgetReservePercent` are implemented so far)
 - `POST /auth/google/connect` — exchanges a client-obtained OAuth
   authorization code for access + refresh tokens; stores the refresh token
   KMS-encrypted on the user's `GOOGLE_ACCOUNT` record (see `DATA-MODEL.md`)
