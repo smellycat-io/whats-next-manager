@@ -18,6 +18,14 @@ export function badRequest(message: string): HttpError {
   return new HttpError(400, message);
 }
 
+export function unauthorized(): HttpError {
+  return new HttpError(401, "Unauthorized");
+}
+
+export function forbidden(): HttpError {
+  return new HttpError(403, "Forbidden");
+}
+
 export function notFound(resourceName: string): HttpError {
   return new HttpError(404, `${resourceName} not found`);
 }

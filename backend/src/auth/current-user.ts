@@ -1,8 +1,13 @@
 import { NextFunction, Request, Response } from "express";
+import { forbidden, unauthorized } from "../http/errors";
+import { ACT_AS_USER_HEADER, hasDelegation, isAllowedForDelegate } from "./delegation";
 
 declare module "express-serve-static-core" {
   interface Request {
+    /** Whose data this request reads and writes. */
     userId: string;
+    /** Who made the request: the same as userId, or an agent's service user. */
+    actorUserId: string;
   }
 }
 
@@ -34,19 +39,29 @@ function verifiedCognitoSub(req: Request): string | undefined {
 }
 
 /**
- * Attaches the authenticated user's id to the request as `req.userId`,
- * or responds 401 when there are no verified claims. Every resource
- * router mounts this first (per WORKSPACES.md's call for a single shared
- * auth utility). API Gateway already rejects unauthenticated requests on
- * these routes; this check is the backstop for any path that reaches the
- * Lambda without the authorizer, such as an unauthenticated OPTIONS.
+ * Sets `req.userId` and `req.actorUserId` for the authenticated caller,
+ * or rejects the request. Every resource router mounts this first (per
+ * WORKSPACES.md's call for a single shared auth utility).
+ *
+ * - No verified claims → 401. API Gateway already rejects unauthenticated
+ *   requests on these routes; this is the backstop for any path that
+ *   reaches the Lambda without the authorizer, such as an OPTIONS request.
+ * - An act-as header naming another user → the caller must be that user's
+ *   delegate, on an allowed route (see delegation.ts), or 403. The header
+ *   grants nothing on its own: it's only read after the token is verified.
  */
-export function requireUserId(req: Request, res: Response, next: NextFunction) {
-  const userId = verifiedCognitoSub(req);
-  if (!userId) {
-    res.status(401).json({ status: "error", message: "Unauthorized" });
-    return;
+export async function requireUserId(req: Request, _res: Response, next: NextFunction) {
+  const callerId = verifiedCognitoSub(req);
+  if (!callerId) throw unauthorized();
+
+  const actAsUserId = req.get(ACT_AS_USER_HEADER);
+  if (actAsUserId && actAsUserId !== callerId) {
+    if (!isAllowedForDelegate(req.method, req.baseUrl)) throw forbidden();
+    if (!(await hasDelegation(actAsUserId, callerId))) throw forbidden();
+    req.userId = actAsUserId;
+  } else {
+    req.userId = callerId;
   }
-  req.userId = userId;
+  req.actorUserId = callerId;
   next();
 }

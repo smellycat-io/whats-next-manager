@@ -10,7 +10,9 @@ This is separate from the Journal tab agent in `AGENT.md`, which runs
 inside the backend. Workers run outside AWS and reach the API over HTTPS
 like any client.
 
-Not yet implemented: everything in this doc.
+Implemented: the agent app client and delegated access, for the routers
+that exist so far (`/tasks`, `/life-areas`, `/projects`,
+`/priority-levels`). Not yet implemented: everything else in this doc.
 
 ## Service user and delegated access
 
