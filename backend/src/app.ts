@@ -1,7 +1,7 @@
 import express, { Express } from "express";
 import { healthRouter } from "./routes/health";
 import { priorityLevelsRouter } from "./routes/priority-levels";
-import { lifeAreasRouter } from "./routes/life-areas";
+import { areasRouter } from "./routes/areas";
 import { projectsRouter } from "./routes/projects";
 import { tasksRouter } from "./routes/tasks";
 import { errorHandler } from "./http/errors";
@@ -11,7 +11,7 @@ import { errorHandler } from "./http/errors";
  * is testable without spinning up API Gateway/Lambda machinery.
  *
  * Route modules are one file per resource (see routes/), matching the
- * endpoint list in DATA-MODEL.md. priority-levels, life-areas, projects,
+ * endpoint list in DATA-MODEL.md. priority-levels, areas, projects,
  * and tasks are the foundational resources everything else (Goals,
  * Clients) references. Next: budget-cards, goals, categories, journal,
  * calendar, agent, auth/google, clients/time-entries/invoices — each as
@@ -24,7 +24,7 @@ export function createApp(): Express {
 
   app.use("/health", healthRouter);
   app.use("/priority-levels", priorityLevelsRouter);
-  app.use("/life-areas", lifeAreasRouter);
+  app.use("/areas", areasRouter);
   app.use("/projects", projectsRouter);
   app.use("/tasks", tasksRouter);
 

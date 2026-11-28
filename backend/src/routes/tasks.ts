@@ -10,12 +10,11 @@ import {
   updateItem,
   userPk,
 } from "../db/client";
+import { sortKeys } from "../db/keys";
 import { badRequest, notFound } from "../http/errors";
 import { bodyOf, pickDefinedFields } from "../http/request-body";
+import { assertAtMostOneWorkArea } from "../lib/areas";
 import { resolveHighestUrgencyPriorityLevelId } from "../lib/priority-resolution";
-import { SK_PREFIX as PROJECT_SK_PREFIX } from "./projects";
-
-const SK_PREFIX = "TASK#";
 
 type TaskStatus = "Backlog" | "To Do" | "In Progress" | "Done";
 
@@ -30,7 +29,7 @@ interface TaskFields {
   description?: string;
   deadline?: string;
   projectId?: string;
-  lifeAreaIds?: string[];
+  areaIds?: string[];
   priorityLevelId?: string;
   status?: TaskStatus;
   completed?: boolean;
@@ -43,7 +42,7 @@ const UPDATABLE_FIELDS = [
   "description",
   "deadline",
   "projectId",
-  "lifeAreaIds",
+  "areaIds",
   "priorityLevelId",
   "status",
   "completed",
@@ -51,19 +50,15 @@ const UPDATABLE_FIELDS = [
   "assignedToUserId",
 ] as const satisfies readonly (keyof TaskFields)[];
 
-function skFor(id: string): string {
-  return `${SK_PREFIX}${id}`;
-}
-
 function toTask(item: TableItem) {
   return {
-    id: (item.sk as string).slice(SK_PREFIX.length),
+    id: sortKeys.task.idOf(item),
     projectId: item.projectId ?? null,
     name: item.name,
     description: item.description ?? null,
     deadline: item.deadline ?? null,
     priorityLevelId: item.priorityLevelId ?? null,
-    lifeAreaIds: (item.lifeAreaIds as string[] | undefined) ?? [],
+    areaIds: (item.areaIds as string[] | undefined) ?? [],
     status: (item.status as TaskStatus | undefined) ?? "Backlog",
     completed: item.completed ?? false,
     subtasks: (item.subtasks as Subtask[] | undefined) ?? [],
@@ -77,7 +72,7 @@ function toTask(item: TableItem) {
 
 /**
  * ARCHITECTURE.md's "Default priority resolution": a task's effective
- * Life Area tags are its own if set, otherwise its project's — then the
+ * Area tags are its own if set, otherwise its project's — then the
  * highest-urgency level among those tags is the default priorityLevelId.
  * Only used at creation time when priorityLevelId is omitted; once set
  * (even by this resolution), it's a manual value a later PUT can
@@ -85,30 +80,28 @@ function toTask(item: TableItem) {
  */
 async function resolveDefaultPriorityLevelId(
   userId: string,
-  task: Pick<TaskFields, "lifeAreaIds" | "projectId">,
+  task: Pick<TaskFields, "areaIds" | "projectId">,
 ): Promise<string | undefined> {
-  let effectiveLifeAreaIds = task.lifeAreaIds;
-  if ((!effectiveLifeAreaIds || effectiveLifeAreaIds.length === 0) && task.projectId) {
-    const project = await getItem(
-      userPk(userId),
-      `${PROJECT_SK_PREFIX}${task.projectId}`,
-    );
-    effectiveLifeAreaIds = (project?.lifeAreaIds as string[] | undefined) ?? [];
+  let effectiveAreaIds = task.areaIds;
+  if ((!effectiveAreaIds || effectiveAreaIds.length === 0) && task.projectId) {
+    const project = await getItem(userPk(userId), sortKeys.project.for(task.projectId));
+    effectiveAreaIds = (project?.areaIds as string[] | undefined) ?? [];
   }
-  return resolveHighestUrgencyPriorityLevelId(userId, effectiveLifeAreaIds ?? []);
+  return resolveHighestUrgencyPriorityLevelId(userId, effectiveAreaIds ?? []);
 }
 
 export const tasksRouter = Router();
 tasksRouter.use(requireUserId);
 
 tasksRouter.get("/", async (req, res) => {
-  const items = await queryByPk(userPk(req.userId), SK_PREFIX);
+  const items = await queryByPk(userPk(req.userId), sortKeys.task.prefix);
   res.json(items.map(toTask));
 });
 
 tasksRouter.post("/", async (req, res) => {
   const body = bodyOf<TaskFields>(req.body);
   if (!body.name) throw badRequest("name is required");
+  await assertAtMostOneWorkArea(req.userId, body.areaIds ?? []);
 
   const priorityLevelId =
     body.priorityLevelId ??
@@ -116,14 +109,14 @@ tasksRouter.post("/", async (req, res) => {
 
   const item: TableItem = {
     pk: userPk(req.userId),
-    sk: skFor(randomUUID()),
+    sk: sortKeys.task.for(randomUUID()),
     type: "TASK",
     projectId: body.projectId,
     name: body.name,
     description: body.description,
     deadline: body.deadline,
     priorityLevelId,
-    lifeAreaIds: body.lifeAreaIds ?? [],
+    areaIds: body.areaIds ?? [],
     status: body.status ?? "Backlog",
     completed: body.completed ?? false,
     subtasks: body.subtasks ?? [],
@@ -135,13 +128,14 @@ tasksRouter.post("/", async (req, res) => {
 
 tasksRouter.put("/:id", async (req, res) => {
   const updates = pickDefinedFields(bodyOf<TaskFields>(req.body), UPDATABLE_FIELDS);
-  const updated = await updateItem(userPk(req.userId), skFor(req.params.id), updates);
+  if (updates.areaIds) await assertAtMostOneWorkArea(req.userId, updates.areaIds as string[]);
+  const updated = await updateItem(userPk(req.userId), sortKeys.task.for(req.params.id), updates);
   if (!updated) throw notFound("Task");
   res.json(toTask(updated));
 });
 
 tasksRouter.delete("/:id", async (req, res) => {
-  const deleted = await deleteItem(userPk(req.userId), skFor(req.params.id));
+  const deleted = await deleteItem(userPk(req.userId), sortKeys.task.for(req.params.id));
   if (!deleted) throw notFound("Task");
   res.status(204).send();
 });

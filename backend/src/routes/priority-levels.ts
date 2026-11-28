@@ -9,6 +9,7 @@ import {
   updateItem,
   userPk,
 } from "../db/client";
+import { sortKeys } from "../db/keys";
 import { badRequest, notFound } from "../http/errors";
 import { bodyOf, pickDefinedFields } from "../http/request-body";
 
@@ -16,8 +17,6 @@ interface PriorityLevelFields {
   name: string;
   order: number;
 }
-
-const SK_PREFIX = "PRIORITY_LEVEL#";
 
 // Seeded on first GET for a new user — see ARCHITECTURE.md's Priority
 // Ladder screen. Order here is the default ladder order (top = highest).
@@ -29,13 +28,9 @@ const DEFAULT_PRIORITY_LEVEL_NAMES = [
   "Self-Actualization",
 ];
 
-function skFor(id: string): string {
-  return `${SK_PREFIX}${id}`;
-}
-
 function toPriorityLevel(item: TableItem) {
   return {
-    id: (item.sk as string).slice(SK_PREFIX.length),
+    id: sortKeys.priorityLevel.idOf(item),
     name: item.name,
     order: item.order,
   };
@@ -48,7 +43,7 @@ function sortByOrder(items: TableItem[]): TableItem[] {
 }
 
 async function seedDefaultsIfEmpty(userId: string): Promise<TableItem[]> {
-  const existing = await queryByPk(userPk(userId), SK_PREFIX);
+  const existing = await queryByPk(userPk(userId), sortKeys.priorityLevel.prefix);
   if (existing.length > 0) {
     return sortByOrder(existing);
   }
@@ -57,7 +52,7 @@ async function seedDefaultsIfEmpty(userId: string): Promise<TableItem[]> {
     DEFAULT_PRIORITY_LEVEL_NAMES.map(async (name, order) => {
       const item: TableItem = {
         pk: userPk(userId),
-        sk: skFor(randomUUID()),
+        sk: sortKeys.priorityLevel.for(randomUUID()),
         type: "PRIORITY_LEVEL",
         name,
         order,
@@ -83,7 +78,7 @@ priorityLevelsRouter.post("/", async (req, res) => {
 
   let resolvedOrder = order;
   if (resolvedOrder === undefined) {
-    const existing = await queryByPk(userPk(req.userId), SK_PREFIX);
+    const existing = await queryByPk(userPk(req.userId), sortKeys.priorityLevel.prefix);
     resolvedOrder =
       existing.length === 0
         ? 0
@@ -92,7 +87,7 @@ priorityLevelsRouter.post("/", async (req, res) => {
 
   const item: TableItem = {
     pk: userPk(req.userId),
-    sk: skFor(randomUUID()),
+    sk: sortKeys.priorityLevel.for(randomUUID()),
     type: "PRIORITY_LEVEL",
     name,
     order: resolvedOrder,
@@ -117,7 +112,7 @@ priorityLevelsRouter.put("/", async (req, res) => {
     updatesList.map(({ id, ...fields }: { id: string } & Partial<PriorityLevelFields>) =>
       updateItem(
         userPk(req.userId),
-        skFor(id),
+        sortKeys.priorityLevel.for(id),
         pickDefinedFields<PriorityLevelFields>(fields, ["name", "order"]),
       ),
     ),
@@ -130,7 +125,7 @@ priorityLevelsRouter.put("/", async (req, res) => {
 });
 
 priorityLevelsRouter.delete("/:id", async (req, res) => {
-  const deleted = await deleteItem(userPk(req.userId), skFor(req.params.id));
+  const deleted = await deleteItem(userPk(req.userId), sortKeys.priorityLevel.for(req.params.id));
   if (!deleted) throw notFound("Priority level");
   res.status(204).send();
 });

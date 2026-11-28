@@ -1,4 +1,5 @@
 import { getItem, userPk } from "../db/client";
+import { sortKeys } from "../db/keys";
 
 /**
  * Delegated access for agent workers — see AGENT-WORKERS.md. A service
@@ -16,7 +17,7 @@ export const ACT_AS_USER_HEADER = "x-act-as-user";
  */
 const DELEGATE_ALLOWED_METHODS: Readonly<Record<string, readonly string[]>> = {
   "/tasks": ["GET", "POST", "PUT"],
-  "/life-areas": ["GET"],
+  "/areas": ["GET"],
   "/projects": ["GET"],
   "/priority-levels": ["GET"],
 };
@@ -29,5 +30,5 @@ export async function hasDelegation(
   ownerUserId: string,
   serviceUserId: string,
 ): Promise<boolean> {
-  return (await getItem(userPk(ownerUserId), `DELEGATE#${serviceUserId}`)) !== undefined;
+  return (await getItem(userPk(ownerUserId), sortKeys.delegate.for(serviceUserId))) !== undefined;
 }

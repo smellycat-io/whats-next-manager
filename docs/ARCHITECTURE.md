@@ -163,8 +163,7 @@ not needed — no separate entity, no restricted task shape, no
 
   Each Area has a **default priority level** (references the Priority
   Ladder) — e.g., Family → Love/Belonging, What's Next →
-  Esteem/Self-Actualization. Not yet implemented: `kind`, and the rename
-  from Life Areas; the deployed routers still use `/life-areas`.
+  Esteem/Self-Actualization.
 - **Project** — lives inside one or more Areas (many-to-many — e.g., a
   side-hustle project can be tagged under both "Family" and "Security" at
   once, since it can serve more than one purpose). A quick list (groceries,
