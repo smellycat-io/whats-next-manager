@@ -64,10 +64,7 @@ Budget tab logic for the phased plan.
   contracts; `project` and `life` Areas are tracked as the user's own cost.
   A project or task may have at most one Work Area among its effective
   Area tags — see `CLIENTS-INVOICING.md`.
-- `AREA` and `areaIds` were previously `LIFE_AREA` and `lifeAreaIds`.
-  Existing items are migrated once per environment by
-  `backend/scripts/migrate-life-areas-to-areas.mjs`, with `kind` set to
-  `life`. Areas with no `kind` are read as Life Areas.
+- Areas with no `kind` are read as Life Areas.
 - **Simple Lists are fully unified with Projects/Tasks — no separate
   entity, no restricted feature set.** A "grocery list" is just a
   `PROJECT` like any other; its items are ordinary `TASK` records with the
