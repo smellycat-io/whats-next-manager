@@ -4,6 +4,7 @@ import { TableItem, getItem, putItem, queryByPk, updateItem, userPk } from "../d
 import { sortKeys } from "../db/keys";
 import { badRequest, notFound } from "../http/errors";
 import { assertOneOf, bodyOf } from "../http/request-body";
+import { taskUpdatesPrefix } from "../lib/tasks";
 
 /**
  * A task's progress log (TASK_UPDATE items) — see AGENT-WORKERS.md.
@@ -29,13 +30,8 @@ function toTaskUpdate(item: TableItem) {
   };
 }
 
-/** Sort-key prefix shared by one task's updates, which sort by time. */
-function updatesPrefixFor(taskId: string): string {
-  return sortKeys.taskUpdate.for(`${taskId}#`);
-}
-
 taskUpdatesRouter.get("/:id/updates", async (req, res) => {
-  const items = await queryByPk(userPk(req.userId), updatesPrefixFor(req.params.id));
+  const items = await queryByPk(userPk(req.userId), taskUpdatesPrefix(req.params.id));
   res.json(items.map(toTaskUpdate));
 });
 
@@ -52,7 +48,7 @@ taskUpdatesRouter.post("/:id/updates", async (req, res) => {
   const item: TableItem = {
     pk,
     // The random suffix keeps two updates in the same millisecond apart.
-    sk: `${updatesPrefixFor(req.params.id)}${now}#${randomUUID().slice(0, 8)}`,
+    sk: `${taskUpdatesPrefix(req.params.id)}${now}#${randomUUID().slice(0, 8)}`,
     type: "TASK_UPDATE",
     taskId: req.params.id,
     kind,

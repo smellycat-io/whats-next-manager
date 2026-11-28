@@ -1,7 +1,7 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../app";
-import { TableItem, getItem, putItem, queryByPk, updateItem } from "../db/client";
+import { TableItem, deleteItem, getItem, putItem, queryByPk, updateItem } from "../db/client";
 import { TEST_ACTOR_HEADER, TEST_USER_ID } from "../test-support/fake-auth";
 
 vi.mock("../auth/current-user", () => import("../test-support/fake-auth"));
@@ -11,6 +11,7 @@ vi.mock("../db/client", async (importOriginal) => ({
   putItem: vi.fn(),
   queryByPk: vi.fn(),
   updateItem: vi.fn(),
+  deleteItem: vi.fn(),
 }));
 
 const app = createApp();
@@ -154,5 +155,30 @@ describe("task updates", () => {
     vi.mocked(queryByPk).mockResolvedValue([]);
     await request(app).get("/tasks/t1/updates");
     expect(queryByPk).toHaveBeenCalledWith(userPk, "TASK_UPDATE#t1#");
+  });
+});
+
+describe("DELETE /tasks/:id", () => {
+  it("deletes the task's progress log with it", async () => {
+    vi.mocked(deleteItem).mockResolvedValue(true);
+    vi.mocked(queryByPk).mockResolvedValue([
+      { pk: userPk, sk: "TASK_UPDATE#t1#2026-11-01T00:00:00.000Z#a" },
+      { pk: userPk, sk: "TASK_UPDATE#t1#2026-11-02T00:00:00.000Z#b" },
+    ]);
+    const response = await request(app).delete("/tasks/t1");
+    expect(response.status).toBe(204);
+    expect(queryByPk).toHaveBeenCalledWith(userPk, "TASK_UPDATE#t1#");
+    expect(vi.mocked(deleteItem).mock.calls.map((call) => call[1])).toEqual([
+      "TASK#t1",
+      "TASK_UPDATE#t1#2026-11-01T00:00:00.000Z#a",
+      "TASK_UPDATE#t1#2026-11-02T00:00:00.000Z#b",
+    ]);
+  });
+
+  it("returns 404 without touching updates when the task doesn't exist", async () => {
+    vi.mocked(deleteItem).mockResolvedValue(false);
+    const response = await request(app).delete("/tasks/missing");
+    expect(response.status).toBe(404);
+    expect(queryByPk).not.toHaveBeenCalled();
   });
 });
