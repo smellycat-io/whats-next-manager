@@ -33,22 +33,30 @@ export interface ContractFields {
 /** Stands in for a missing endDate, so open-ended ranges compare as dates. */
 const OPEN_END_DATE = "9999-12-31";
 
-export function toContract(item: TableItem) {
+export interface Contract extends Omit<ContractFields, "name" | "issuerAreaId" | "flatRatePeriod" | "endDate"> {
+  id: string;
+  name: string | null;
+  issuerAreaId: string | null;
+  flatRatePeriod: ContractFields["flatRatePeriod"] | null;
+  endDate: string | null;
+}
+
+export function toContract(item: TableItem): Contract {
   return {
     id: sortKeys.contract.idOf(item),
-    name: item.name ?? null,
-    issuerAreaId: item.issuerAreaId ?? null,
-    clientId: item.clientId,
+    name: (item.name as string | undefined) ?? null,
+    issuerAreaId: (item.issuerAreaId as string | undefined) ?? null,
+    clientId: item.clientId as string,
     projectIds: (item.projectIds as string[] | undefined) ?? [],
-    billingMode: item.billingMode,
-    payUnit: item.payUnit,
-    rate: item.rate,
-    flatRatePeriod: item.flatRatePeriod ?? null,
-    tokenBilling: item.tokenBilling ?? DEFAULT_TOKEN_BILLING,
-    tokenMarkup: item.tokenMarkup ?? DEFAULT_TOKEN_MARKUP,
-    startDate: item.startDate,
-    endDate: item.endDate ?? null,
-    archived: item.archived ?? false,
+    billingMode: item.billingMode as ContractFields["billingMode"],
+    payUnit: item.payUnit as ContractFields["payUnit"],
+    rate: item.rate as number,
+    flatRatePeriod: (item.flatRatePeriod as ContractFields["flatRatePeriod"] | undefined) ?? null,
+    tokenBilling: (item.tokenBilling as ContractFields["tokenBilling"] | undefined) ?? DEFAULT_TOKEN_BILLING,
+    tokenMarkup: (item.tokenMarkup as number | undefined) ?? DEFAULT_TOKEN_MARKUP,
+    startDate: item.startDate as string,
+    endDate: (item.endDate as string | undefined) ?? null,
+    archived: (item.archived as boolean | undefined) ?? false,
   };
 }
 

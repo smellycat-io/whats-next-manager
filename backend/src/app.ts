@@ -6,7 +6,9 @@ import { clientsRouter } from "./routes/clients";
 import { contractsRouter } from "./routes/contracts";
 import { projectsRouter } from "./routes/projects";
 import { tasksRouter } from "./routes/tasks";
+import { settingsRouter } from "./routes/settings";
 import { timeEntriesRouter } from "./routes/time-entries";
+import { usageRouter } from "./routes/usage";
 import { errorHandler } from "./http/errors";
 import { parseLambdaJsonBody } from "./http/lambda-json-body";
 
@@ -32,6 +34,8 @@ export function createApp(): Express {
   app.use("/clients", clientsRouter);
   app.use("/contracts", contractsRouter);
   app.use("/time-entries", timeEntriesRouter);
+  app.use("/usage", usageRouter);
+  app.use("/settings", settingsRouter);
 
   // Registered last so it catches errors from every router above.
   app.use(errorHandler);

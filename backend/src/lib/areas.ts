@@ -65,3 +65,16 @@ export async function assertCanBecomeWorkArea(userId: string, areaId: string): P
   });
   if (wouldHaveTwoWorkAreas) throw badRequest(ONE_WORK_AREA_MESSAGE);
 }
+
+/**
+ * The kind that decides how a project's work counts: work if any of its
+ * Areas is a Work Area, else project, else life, else unassigned. A
+ * project can carry several Areas, but is billed as at most one kind.
+ */
+export function billingKindOf(project: TableItem, areasById: Map<string, TableItem>) {
+  const kinds = ((project.areaIds as string[] | undefined) ?? [])
+    .map((id) => areasById.get(id))
+    .filter((area): area is TableItem => area !== undefined)
+    .map(kindOf);
+  return (["work", "project", "life"] as const).find((kind) => kinds.includes(kind)) ?? "unassigned";
+}

@@ -18,6 +18,7 @@ export const ACT_AS_USER_HEADER = "x-act-as-user";
 const DELEGATE_ALLOWED_METHODS: Readonly<Record<string, readonly string[]>> = {
   "/tasks": ["GET", "POST", "PUT"],
   "/time-entries": ["GET", "POST"],
+  "/usage": ["GET"],
   "/areas": ["GET"],
   "/clients": ["GET"],
   "/contracts": ["GET"],

@@ -6,9 +6,9 @@ the **hamburger menu**, not the bottom tabs — alongside Settings and
 Profile — since it's a less-frequent, management-style task rather than a
 daily-use screen.
 
-Implemented: Clients, Contracts, and time entries (human and agent).
-Not yet implemented: the usage summary, invoices, and sharing Clients
-with a Workspace.
+Implemented: Clients, Contracts, time entries (human and agent), and the
+usage summary. Not yet implemented: invoices, and sharing Clients with a
+Workspace.
 
 ## Core concept: Work Areas, Projects, Contracts
 
@@ -183,18 +183,29 @@ gives billable totals.
 
 ## Usage summary
 
-`GET /usage/summary` reports, for a date range, human hours, agent hours,
-tokens by model, and `costUsd` split by `costType`, broken down per
-project. Scoped by one of:
+`GET /usage/summary?from=YYYY-MM-DD&to=YYYY-MM-DD` reports human hours
+(and how many are billable), agent hours, tokens by model, and `costUsd`
+split into paid and local, in total and per project. It also bills each
+active contract in scope over the range, using the billing math above:
+hours amount, fee, token cost, token amount, total, and for flat
+contracts the effective hourly rate. Scoped by at most one of:
 
-- `areaId` — e.g. all of PIN, including its clients' projects; or a
-  Project or Life Area, for the user's own cost
-- `clientId` — e.g. MAF only
-- `contractId` — billable amount under that contract's terms, plus the
-  reasonableness figures for flat contracts
+- `areaId` — the work on that Area's projects, e.g. all of PIN including
+  its clients' projects, or a Project or Life Area for the user's own
+  cost. Bills every contract on those projects.
+- `clientId` — e.g. MAF only: the work its contracts captured when it was
+  logged, and those contracts' bills
+- `contractId` — one contract's work and bill
 
-With no scope it returns every Area, grouped by Area kind, so work vs.
-non-work usage is visible at a glance.
+With no scope it also returns every Area's totals, and totals by billing
+kind (`work`, `project`, `life`, `unassigned`). A project tagged with
+several Areas appears under each of them in the per-Area list, but counts
+once by kind: as work if any of its Areas is a Work Area, else project,
+else life.
+
+Flat monthly fees count each calendar month the range and contract share,
+with a partial month counting as a full one. One-time and per-project
+fees count in the range where the contract starts.
 
 ## Navigation: the hamburger menu
 

@@ -12,8 +12,8 @@ like any client.
 
 Implemented: the agent app client, delegated access (for the routers that
 exist so far: `/tasks`, `/areas`, `/projects`, `/priority-levels`), and
-the task lifecycle below, and agent time entries for usage logging. Not
-yet implemented: the token budget and `/usage` routes.
+the task lifecycle below, agent time entries for usage logging, and the
+token budget.
 
 ## Service user and delegated access
 
@@ -127,8 +127,12 @@ the worker hold back lower-priority work first.
 - Counts **paid usage only** (`costType: paid`): input, output and
   cache-write tokens. Cache reads are excluded; they dwarf the other
   counts and are not a good proxy for the limit.
-- `GET /usage/budget` returns used and remaining per window, with per-Area
-  usage.
+- Budgets are set with `PUT /settings` (`tokenBudgets`,
+  `budgetReservePercent`). `weekly` is a rolling 7-day window.
+- `GET /usage/budget` returns, per budget, the window start, used and
+  remaining tokens, remaining percent, `belowReserve`, and each Area's
+  usage in the window. Runs count by when they were logged
+  (`createdAt`).
 - `SETTINGS.budgetReservePercent` (default 20). Below the reserve, the
   worker only claims tasks whose effective priority is in the top two
   levels of the Priority Ladder.
