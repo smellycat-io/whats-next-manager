@@ -5,6 +5,7 @@ import { areasRouter } from "./routes/areas";
 import { projectsRouter } from "./routes/projects";
 import { tasksRouter } from "./routes/tasks";
 import { errorHandler } from "./http/errors";
+import { parseLambdaJsonBody } from "./http/lambda-json-body";
 
 /**
  * Builds the Express app. Kept separate from lambda.ts so the app itself
@@ -21,6 +22,7 @@ export function createApp(): Express {
   const app = express();
 
   app.use(express.json());
+  app.use(parseLambdaJsonBody);
 
   app.use("/health", healthRouter);
   app.use("/priority-levels", priorityLevelsRouter);
