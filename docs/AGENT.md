@@ -10,12 +10,12 @@ reach across the app, rather than a separate scoped assistant per tab.
 ## What it can do
 
 - **Tasks & Projects** — create, edit, complete, or delete tasks
-  (including subtasks); create or edit Projects and Life Area tags; move a
+  (including subtasks); create or edit Projects and Area tags; move a
   task's deadline or priority level
 - **Budget** — create, rename, retarget, reorder, or delete Budget cards;
   log a manual transaction on request
 - **Goals** — create or edit tally/target goals, adjust cadence or target,
-  tag with Life Areas
+  tag with Areas
 - **Google Calendar** — create, edit, or delete events directly, same
   scope as the Calendar tab itself
 - **Permission level: free-form.** The agent is not constrained to
@@ -53,8 +53,7 @@ skipped.
   considered and rejected: this agent writes directly to real data
   (tasks, budget, calendar), where tool-calling reliability matters more
   than shaving a few dollars a month at current scale.
-- **Context provided per call:** the user's current Tasks, Projects, Life
-  Areas, Budget cards, Goals, upcoming Google Calendar events, recent
+- **Context provided per call:** the user's current Tasks, Projects, Areas, Budget cards, Goals, upcoming Google Calendar events, recent
   Journal entries, and **full transaction-level detail** (individual
   transactions, not just card/category summaries) — enough for the agent
   to reason about real state at the same granularity used when reviewing
@@ -65,10 +64,10 @@ skipped.
   dataset on every call, to keep input tokens down directly rather than
   relying on caching alone.
 - **Prompt caching** on the repeated context block (tasks, cards, goals,
-  Life Areas) — cuts the cost of re-sending it on follow-up messages
+  Areas) — cuts the cost of re-sending it on follow-up messages
   within a session to roughly 10% of the base input price.
 - **Tool-calling:** the agent has tool access to the existing internal
-  endpoints — task, project, life-area, budget-card, goal, and Google
+  endpoints — task, project, area, budget-card, goal, and Google
   Calendar event CRUD (see `DATA-MODEL.md`) — rather than a separate,
   parallel write path. One set of endpoints, two callers (the app's own
   UI, and the agent). Calendar writes use the same `calendar.events`

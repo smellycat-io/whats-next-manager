@@ -8,6 +8,16 @@ import { CiCdConstruct } from "./constructs/cicd-construct";
 
 const GITHUB_ORG = "smellycat-io";
 const GITHUB_REPO = "whats-next-manager";
+// Numeric ids GitHub embeds in the OIDC `sub` claim (see cicd-construct.ts).
+// From `gh api users/smellycat-io --jq .id` and
+// `gh api repos/smellycat-io/whats-next-manager --jq .id`.
+const GITHUB_ORG_ID = "199698335";
+const GITHUB_REPO_ID = "1365035550";
+
+// The stage stack created the account's GitHub OIDC provider and keeps
+// owning it; prod imports it (see ownsGithubOidcProvider in
+// cicd-construct.ts for why this can't be decided by a lookup).
+const GITHUB_OIDC_PROVIDER_OWNER_ENV = "stage";
 
 // This stack's own deploy branch — matches Deploy & repo flow in
 // ARCHITECTURE.md (feature branch → stage → main).
@@ -18,8 +28,6 @@ const TRUSTED_BRANCH_BY_ENV: Record<string, string> = {
 
 export interface LifeDashboardStackProps extends StackProps {
   envName: string;
-  /** See cicd-construct.ts — passed through from bin/app.ts's pre-synth lookup. */
-  existingGithubOidcProviderArn?: string;
 }
 
 /**
@@ -55,16 +63,23 @@ export class LifeDashboardStack extends Stack {
     const cicd = new CiCdConstruct(this, "CiCd", {
       envName: props.envName,
       githubOrg: GITHUB_ORG,
+      githubOrgId: GITHUB_ORG_ID,
       githubRepo: GITHUB_REPO,
+      githubRepoId: GITHUB_REPO_ID,
       trustedBranch: TRUSTED_BRANCH_BY_ENV[props.envName] ?? props.envName,
-      existingGithubOidcProviderArn: props.existingGithubOidcProviderArn,
+      ownsGithubOidcProvider: props.envName === GITHUB_OIDC_PROVIDER_OWNER_ENV,
     });
 
-    // Outputs the Expo app needs to configure itself against this environment.
+    // Outputs the clients need to configure themselves against this
+    // environment. The agent client's secret is deliberately not an output;
+    // read it with `aws cognito-idp describe-user-pool-client`.
     new CfnOutput(this, "ApiUrl", { value: api.api.url });
     new CfnOutput(this, "UserPoolId", { value: auth.userPool.userPoolId });
-    new CfnOutput(this, "UserPoolClientId", {
-      value: auth.userPoolClient.userPoolClientId,
+    new CfnOutput(this, "MobileClientId", {
+      value: auth.mobileClient.userPoolClientId,
+    });
+    new CfnOutput(this, "AgentClientId", {
+      value: auth.agentClient.userPoolClientId,
     });
     new CfnOutput(this, "TableName", { value: database.table.tableName });
     new CfnOutput(this, "GitHubActionsRoleArn", {

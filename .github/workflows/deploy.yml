@@ -33,6 +33,12 @@ jobs:
         working-directory: backend
         run: npm ci
 
+      # A failing type-check or test stops the deploy before anything
+      # reaches AWS.
+      - name: Type-check and test backend
+        working-directory: backend
+        run: npm run typecheck && npm test
+
       - name: Install infra dependencies
         working-directory: infra
         run: npm ci

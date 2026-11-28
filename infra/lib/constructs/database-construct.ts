@@ -27,7 +27,9 @@ export class DatabaseConstruct extends Construct {
         props.envName === "prod"
           ? RemovalPolicy.RETAIN
           : RemovalPolicy.DESTROY,
-      pointInTimeRecovery: props.envName === "prod",
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: props.envName === "prod",
+      },
     });
 
     // Sparse GSI for shared Workspaces (see WORKSPACES.md / DATA-MODEL.md):

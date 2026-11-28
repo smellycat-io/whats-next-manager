@@ -13,7 +13,8 @@ export interface AuthConstructProps {
  */
 export class AuthConstruct extends Construct {
   public readonly userPool: cognito.UserPool;
-  public readonly userPoolClient: cognito.UserPoolClient;
+  public readonly mobileClient: cognito.UserPoolClient;
+  public readonly agentClient: cognito.UserPoolClient;
 
   constructor(scope: Construct, id: string, props: AuthConstructProps) {
     super(scope, id);
@@ -37,11 +38,23 @@ export class AuthConstruct extends Construct {
 
     // No client secret — the Expo app is a public client (mobile), can't
     // safely hold a secret.
-    this.userPoolClient = this.userPool.addClient("MobileClient", {
+    this.mobileClient = this.userPool.addClient("MobileClient", {
       authFlows: { userSrp: true },
       accessTokenValidity: Duration.hours(1),
       refreshTokenValidity: Duration.days(30),
       generateSecret: false,
+    });
+
+    // Agent workers (see AGENT-WORKERS.md) run on machines the user
+    // controls, so unlike the mobile app this client can hold a secret.
+    // Plain password auth instead of SRP keeps the Python worker free of
+    // an SRP library. Its access tokens still carry the
+    // aws.cognito.signin.user.admin scope the API authorizer requires.
+    this.agentClient = this.userPool.addClient("AgentClient", {
+      authFlows: { userPassword: true },
+      accessTokenValidity: Duration.hours(1),
+      refreshTokenValidity: Duration.days(30),
+      generateSecret: true,
     });
   }
 }

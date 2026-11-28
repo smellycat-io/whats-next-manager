@@ -9,6 +9,10 @@ import * as kms from "aws-cdk-lib/aws-kms";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as path from "path";
 
+// The OAuth scope Cognito puts on access tokens issued through its user
+// APIs (SRP sign-in), as opposed to hosted-UI custom scopes.
+const COGNITO_USER_SCOPE = "aws.cognito.signin.user.admin";
+
 export interface ApiConstructProps {
   envName: string;
   table: dynamodb.Table;
@@ -62,10 +66,63 @@ export class ApiConstruct extends Construct {
     props.tokenEncryptionKey.grantEncryptDecrypt(handler);
     props.exportsBucket.grantReadWrite(handler);
 
-    this.api = new apigateway.LambdaRestApi(this, "Api", {
-      handler,
-      proxy: true,
+    const integration = new apigateway.LambdaIntegration(handler);
+
+    // Every method except the public ones below requires a valid Cognito
+    // access token. API Gateway's Cognito authorizer validates ID tokens
+    // unless the method declares OAuth scopes, and then it validates access
+    // tokens instead. Access tokens from SRP and password sign-in carry this
+    // scope, so requiring it makes the API accept access tokens, the
+    // intended token for API calls.
+    const authorizer = new apigateway.CognitoUserPoolsAuthorizer(
+      this,
+      "CognitoAuthorizer",
+      { cognitoUserPools: [props.userPool] },
+    );
+    const requireCognitoAccessToken: apigateway.MethodOptions = {
+      authorizer,
+      authorizationType: apigateway.AuthorizationType.COGNITO,
+      authorizationScopes: [COGNITO_USER_SCOPE],
+    };
+    const noAuth: apigateway.MethodOptions = {
+      authorizationType: apigateway.AuthorizationType.NONE,
+    };
+
+    // A plain RestApi rather than LambdaRestApi: LambdaRestApi with
+    // proxy: true refuses addResource on the root, and GET /health needs its
+    // own unauthenticated resource. The root ANY + {proxy+} ANY pair below
+    // has the same shape (and construct ids) LambdaRestApi creates.
+    this.api = new apigateway.RestApi(this, "Api", {
       deployOptions: { stageName: props.envName },
+      defaultIntegration: integration,
     });
+
+    // Preflight requests never carry tokens, so OPTIONS stays open and goes
+    // to the Lambda, where CORS can be handled if it's added later. API
+    // Gateway matches an explicit method before ANY.
+    const allowUnauthenticatedPreflight = (resource: apigateway.IResource) =>
+      resource.addMethod("OPTIONS", integration, noAuth);
+
+    // Every ANY method requires a token. They're given the options
+    // explicitly, not through defaultMethodOptions: CDK merges defaults into
+    // the public methods too, and their OAuth scopes are invalid there.
+    const requireTokenForAnyMethod = (resource: apigateway.IResource) =>
+      resource.addMethod("ANY", integration, requireCognitoAccessToken);
+
+    requireTokenForAnyMethod(this.api.root);
+    allowUnauthenticatedPreflight(this.api.root);
+    const rootProxy = this.api.root.addProxy({ anyMethod: false });
+    requireTokenForAnyMethod(rootProxy);
+    allowUnauthenticatedPreflight(rootProxy);
+
+    // Only the exact GET /health liveness check is public. API Gateway
+    // doesn't fall back to the root {proxy+} once a request has matched the
+    // /health resource, so /health needs its own authenticated {proxy+}
+    // so anything below /health still requires a token.
+    const health = this.api.root.addResource("health");
+    health.addMethod("GET", integration, noAuth);
+    const healthProxy = health.addProxy({ anyMethod: false });
+    requireTokenForAnyMethod(healthProxy);
+    allowUnauthenticatedPreflight(healthProxy);
   }
 }
