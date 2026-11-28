@@ -40,6 +40,11 @@ export interface TaskFields {
   agentState: AgentState;
 }
 
+/** Sort-key prefix shared by one task's TASK_UPDATE items, which sort by time. */
+export function taskUpdatesPrefix(taskId: string): string {
+  return sortKeys.taskUpdate.for(`${taskId}#`);
+}
+
 /** A new task with no Area or project hasn't been sorted yet. */
 export function defaultStatusFor(task: Partial<TaskFields>): TaskStatus {
   return (task.areaIds?.length ?? 0) > 0 || task.projectId ? "Backlog" : "Unsorted";

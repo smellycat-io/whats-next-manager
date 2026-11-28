@@ -21,6 +21,7 @@ import {
   TASK_STATUSES,
   TaskFields,
   defaultStatusFor,
+  taskUpdatesPrefix,
   toTask,
 } from "../lib/tasks";
 import { taskQueueRouter } from "./task-queue";
@@ -154,8 +155,14 @@ tasksRouter.put("/:id", async (req, res) => {
   res.json(toTask(updated));
 });
 
+// Deletes the task's progress log with it, so no TASK_UPDATE items are
+// left behind for a task that no longer exists.
 tasksRouter.delete("/:id", async (req, res) => {
-  const deleted = await deleteItem(userPk(req.userId), sortKeys.task.for(req.params.id));
+  const pk = userPk(req.userId);
+  const deleted = await deleteItem(pk, sortKeys.task.for(req.params.id));
   if (!deleted) throw notFound("Task");
+
+  const updates = await queryByPk(pk, taskUpdatesPrefix(req.params.id));
+  await Promise.all(updates.map((update) => deleteItem(pk, update.sk)));
   res.status(204).send();
 });
