@@ -26,6 +26,10 @@ export function forbidden(): HttpError {
   return new HttpError(403, "Forbidden");
 }
 
+export function conflict(message: string): HttpError {
+  return new HttpError(409, message);
+}
+
 export function notFound(resourceName: string): HttpError {
   return new HttpError(404, `${resourceName} not found`);
 }

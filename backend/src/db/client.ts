@@ -65,13 +65,15 @@ export async function putItem(item: TableItem): Promise<void> {
 
 /**
  * Applies `updates` to an existing item and returns the updated item, or
- * undefined when no item has that key. Never creates an item. A `null`
- * value removes the attribute.
+ * undefined when no item has that key or an `onlyIf` attribute doesn't
+ * hold the given value. Never creates an item. A `null` value removes the
+ * attribute.
  */
 export async function updateItem(
   pk: string,
   sk: string,
   updates: Record<string, unknown>,
+  onlyIf: Record<string, unknown> = {},
 ): Promise<TableItem | undefined> {
   const keys = Object.keys(updates);
   if (keys.length === 0) {
@@ -100,6 +102,13 @@ export async function updateItem(
     }
   });
 
+  const conditionClauses = [ITEM_EXISTS];
+  Object.entries(onlyIf).forEach(([key, value], index) => {
+    expressionAttributeNames[`#c${index}`] = key;
+    expressionAttributeValues[`:c${index}`] = value;
+    conditionClauses.push(`#c${index} = :c${index}`);
+  });
+
   const updateExpression = [
     setClauses.length > 0 ? `SET ${setClauses.join(", ")}` : null,
     removeClauses.length > 0 ? `REMOVE ${removeClauses.join(", ")}` : null,
@@ -107,13 +116,13 @@ export async function updateItem(
     .filter(Boolean)
     .join(" ");
 
-  return ifItemExists(async () => {
+  return ifConditionHolds(async () => {
     const result = await docClient.send(
       new UpdateCommand({
         TableName: TABLE_NAME,
         Key: { pk, sk },
         UpdateExpression: updateExpression,
-        ConditionExpression: ITEM_EXISTS,
+        ConditionExpression: conditionClauses.join(" AND "),
         ExpressionAttributeNames: expressionAttributeNames,
         ExpressionAttributeValues:
           Object.keys(expressionAttributeValues).length > 0
@@ -128,7 +137,7 @@ export async function updateItem(
 
 /** Deletes an item. Returns false when no item has that key. */
 export async function deleteItem(pk: string, sk: string): Promise<boolean> {
-  const deleted = await ifItemExists(async () => {
+  const deleted = await ifConditionHolds(async () => {
     await docClient.send(
       new DeleteCommand({
         TableName: TABLE_NAME,
@@ -141,8 +150,8 @@ export async function deleteItem(pk: string, sk: string): Promise<boolean> {
   return deleted ?? false;
 }
 
-/** Runs a write guarded by ITEM_EXISTS, mapping a failed guard to undefined. */
-async function ifItemExists<T>(write: () => Promise<T>): Promise<T | undefined> {
+/** Runs a conditional write, mapping a failed condition to undefined. */
+async function ifConditionHolds<T>(write: () => Promise<T>): Promise<T | undefined> {
   try {
     return await write();
   } catch (error) {

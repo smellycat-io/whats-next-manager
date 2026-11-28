@@ -38,3 +38,15 @@ describe("deleteItem", () => {
     await expect(deleteItem("p", "s")).resolves.toBe(true);
   });
 });
+
+describe("updateItem onlyIf", () => {
+  it("adds each onlyIf attribute to the existence condition", async () => {
+    const send = vi.spyOn(docClient, "send").mockResolvedValue({ Attributes: { pk: "p", sk: "s" } } as never);
+    await updateItem("p", "s", { agentState: "claimed" }, { agentState: "queued" });
+    expect(send.mock.calls[0][0].input).toMatchObject({
+      ConditionExpression: "attribute_exists(pk) AND #c0 = :c0",
+      ExpressionAttributeNames: { "#f0": "agentState", "#c0": "agentState" },
+      ExpressionAttributeValues: { ":v0": "claimed", ":c0": "queued" },
+    });
+  });
+});

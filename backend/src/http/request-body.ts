@@ -1,3 +1,5 @@
+import { badRequest } from "./errors";
+
 /**
  * The request body as a plain object of optional fields. Express 5 leaves
  * `req.body` undefined when a request has no body.
@@ -20,4 +22,18 @@ export function pickDefinedFields<T extends object>(
     if (body[field] !== undefined) picked[field] = body[field];
   }
   return picked;
+}
+
+/**
+ * Rejects a value outside `allowed` with a 400 naming the field. Absent
+ * values pass, so optional fields only need checking when sent.
+ */
+export function assertOneOf<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+  fieldName: string,
+): asserts value is T | undefined {
+  if (value !== undefined && !allowed.includes(value as T)) {
+    throw badRequest(`${fieldName} must be one of: ${allowed.join(", ")}`);
+  }
 }
