@@ -12,30 +12,19 @@ import {
 } from "../db/client";
 import { sortKeys } from "../db/keys";
 import { badRequest, notFound } from "../http/errors";
-import { bodyOf, pickDefinedFields } from "../http/request-body";
+import { assertOneOf, bodyOf, pickDefinedFields } from "../http/request-body";
 import { assertAtMostOneWorkArea } from "../lib/areas";
 import { resolveHighestUrgencyPriorityLevelId } from "../lib/priority-resolution";
-
-type TaskStatus = "Backlog" | "To Do" | "In Progress" | "Done";
-
-interface Subtask {
-  id: string;
-  name: string;
-  completed: boolean;
-}
-
-interface TaskFields {
-  name?: string;
-  description?: string;
-  deadline?: string;
-  projectId?: string;
-  areaIds?: string[];
-  priorityLevelId?: string;
-  status?: TaskStatus;
-  completed?: boolean;
-  subtasks?: Subtask[];
-  assignedToUserId?: string;
-}
+import {
+  AGENT_STATES,
+  TASK_SOURCES,
+  TASK_STATUSES,
+  TaskFields,
+  defaultStatusFor,
+  toTask,
+} from "../lib/tasks";
+import { taskQueueRouter } from "./task-queue";
+import { taskUpdatesRouter } from "./task-updates";
 
 const UPDATABLE_FIELDS = [
   "name",
@@ -48,26 +37,17 @@ const UPDATABLE_FIELDS = [
   "completed",
   "subtasks",
   "assignedToUserId",
+  "agentState",
 ] as const satisfies readonly (keyof TaskFields)[];
 
-function toTask(item: TableItem) {
-  return {
-    id: sortKeys.task.idOf(item),
-    projectId: item.projectId ?? null,
-    name: item.name,
-    description: item.description ?? null,
-    deadline: item.deadline ?? null,
-    priorityLevelId: item.priorityLevelId ?? null,
-    areaIds: (item.areaIds as string[] | undefined) ?? [],
-    status: (item.status as TaskStatus | undefined) ?? "Backlog",
-    completed: item.completed ?? false,
-    subtasks: (item.subtasks as Subtask[] | undefined) ?? [],
-    // Never set yet — Google Calendar integration isn't built (see
-    // ARCHITECTURE.md Task -> Calendar sync). Field exists so the shape
-    // doesn't need to change when that lands.
-    linkedCalendarEventId: item.linkedCalendarEventId ?? null,
-    assignedToUserId: item.assignedToUserId ?? null,
-  };
+const CLAIM_ONLY_MESSAGE = "agentState claimed is set by POST /tasks/:id/claim";
+
+/** Validates the enum fields a create or update may carry. */
+function assertValidTaskFields(body: Partial<TaskFields>): void {
+  assertOneOf(body.status, TASK_STATUSES, "status");
+  assertOneOf(body.agentState, AGENT_STATES, "agentState");
+  assertOneOf(body.source, TASK_SOURCES, "source");
+  if (body.agentState === "claimed") throw badRequest(CLAIM_ONLY_MESSAGE);
 }
 
 /**
@@ -80,7 +60,7 @@ function toTask(item: TableItem) {
  */
 async function resolveDefaultPriorityLevelId(
   userId: string,
-  task: Pick<TaskFields, "areaIds" | "projectId">,
+  task: Partial<TaskFields>,
 ): Promise<string | undefined> {
   let effectiveAreaIds = task.areaIds;
   if ((!effectiveAreaIds || effectiveAreaIds.length === 0) && task.projectId) {
@@ -90,22 +70,47 @@ async function resolveDefaultPriorityLevelId(
   return resolveHighestUrgencyPriorityLevelId(userId, effectiveAreaIds ?? []);
 }
 
+interface TaskListFilters {
+  status?: string;
+  agentState?: string;
+  updatedSince?: string;
+}
+
+/**
+ * Filters applied in the Lambda over the user's task items — cheap at
+ * personal scale, and avoids adding an index (see AGENT-WORKERS.md).
+ */
+function matchesFilters(item: TableItem, filters: TaskListFilters): boolean {
+  return (
+    (filters.status === undefined || item.status === filters.status) &&
+    (filters.agentState === undefined || item.agentState === filters.agentState) &&
+    (filters.updatedSince === undefined ||
+      (typeof item.updatedAt === "string" && item.updatedAt > filters.updatedSince))
+  );
+}
+
 export const tasksRouter = Router();
 tasksRouter.use(requireUserId);
+tasksRouter.use(taskQueueRouter);
+tasksRouter.use(taskUpdatesRouter);
 
 tasksRouter.get("/", async (req, res) => {
+  const filters = req.query as TaskListFilters;
   const items = await queryByPk(userPk(req.userId), sortKeys.task.prefix);
-  res.json(items.map(toTask));
+  res.json(items.filter((item) => matchesFilters(item, filters)).map(toTask));
 });
 
 tasksRouter.post("/", async (req, res) => {
   const body = bodyOf<TaskFields>(req.body);
   if (!body.name) throw badRequest("name is required");
+  assertValidTaskFields(body);
   await assertAtMostOneWorkArea(req.userId, body.areaIds ?? []);
 
   const priorityLevelId =
     body.priorityLevelId ??
     (await resolveDefaultPriorityLevelId(req.userId, body));
+  const isDelegated = req.actorUserId !== req.userId;
+  const now = new Date().toISOString();
 
   const item: TableItem = {
     pk: userPk(req.userId),
@@ -117,18 +122,33 @@ tasksRouter.post("/", async (req, res) => {
     deadline: body.deadline,
     priorityLevelId,
     areaIds: body.areaIds ?? [],
-    status: body.status ?? "Backlog",
+    status: body.status ?? defaultStatusFor(body),
     completed: body.completed ?? false,
     subtasks: body.subtasks ?? [],
     assignedToUserId: body.assignedToUserId,
+    // An agent can't pass its tasks off as the user's own.
+    source: isDelegated ? "agent" : body.source,
+    agentState: body.agentState,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: req.actorUserId,
   };
   await putItem(item);
   res.status(201).json(toTask(item));
 });
 
 tasksRouter.put("/:id", async (req, res) => {
-  const updates = pickDefinedFields(bodyOf<TaskFields>(req.body), UPDATABLE_FIELDS);
+  const body = bodyOf<TaskFields>(req.body);
+  assertValidTaskFields(body);
+  const updates = pickDefinedFields(body, UPDATABLE_FIELDS);
   if (updates.areaIds) await assertAtMostOneWorkArea(req.userId, updates.areaIds as string[]);
+
+  // Requeueing (e.g. after a stale heartbeat) releases the old claim.
+  if (body.agentState === "queued") {
+    Object.assign(updates, { agentClaimedBy: null, agentClaimedAt: null, agentHeartbeatAt: null });
+  }
+  updates.updatedAt = new Date().toISOString();
+
   const updated = await updateItem(userPk(req.userId), sortKeys.task.for(req.params.id), updates);
   if (!updated) throw notFound("Task");
   res.json(toTask(updated));

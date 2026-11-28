@@ -11,7 +11,7 @@ export const AREA_KINDS = ["life", "work", "project"] as const;
 export type AreaKind = (typeof AREA_KINDS)[number];
 export const DEFAULT_AREA_KIND: AreaKind = "life";
 
-export function isAreaKind(value: unknown): value is AreaKind {
+function isAreaKind(value: unknown): value is AreaKind {
   return AREA_KINDS.includes(value as AreaKind);
 }
 

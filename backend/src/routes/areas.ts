@@ -11,13 +11,12 @@ import {
 } from "../db/client";
 import { sortKeys } from "../db/keys";
 import { badRequest, notFound } from "../http/errors";
-import { bodyOf, pickDefinedFields } from "../http/request-body";
+import { assertOneOf, bodyOf, pickDefinedFields } from "../http/request-body";
 import {
   AREA_KINDS,
   AreaKind,
   DEFAULT_AREA_KIND,
   assertCanBecomeWorkArea,
-  isAreaKind,
   kindOf,
 } from "../lib/areas";
 
@@ -26,8 +25,6 @@ interface AreaFields {
   kind: AreaKind;
   defaultPriorityLevelId: string;
 }
-
-const INVALID_KIND_MESSAGE = `kind must be one of: ${AREA_KINDS.join(", ")}`;
 
 function toArea(item: TableItem) {
   return {
@@ -59,7 +56,7 @@ areasRouter.post("/", async (req, res) => {
   if (!name || !defaultPriorityLevelId) {
     throw badRequest("name and defaultPriorityLevelId are required");
   }
-  if (!isAreaKind(kind)) throw badRequest(INVALID_KIND_MESSAGE);
+  assertOneOf(kind, AREA_KINDS, "kind");
 
   const item: TableItem = {
     pk: userPk(req.userId),
@@ -75,7 +72,7 @@ areasRouter.post("/", async (req, res) => {
 
 areasRouter.put("/:id", async (req, res) => {
   const body = bodyOf<AreaFields>(req.body);
-  if (body.kind !== undefined && !isAreaKind(body.kind)) throw badRequest(INVALID_KIND_MESSAGE);
+  assertOneOf(body.kind, AREA_KINDS, "kind");
   if (body.kind === "work") await assertCanBecomeWorkArea(req.userId, req.params.id);
 
   const updates = pickDefinedFields(body, ["name", "kind", "defaultPriorityLevelId"]);

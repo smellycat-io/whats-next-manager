@@ -10,9 +10,10 @@ This is separate from the Journal tab agent in `AGENT.md`, which runs
 inside the backend. Workers run outside AWS and reach the API over HTTPS
 like any client.
 
-Implemented: the agent app client and delegated access, for the routers
-that exist so far (`/tasks`, `/areas`, `/projects`,
-`/priority-levels`). Not yet implemented: everything else in this doc.
+Implemented: the agent app client, delegated access (for the routers that
+exist so far: `/tasks`, `/areas`, `/projects`, `/priority-levels`), and
+the task lifecycle below. Not yet implemented: usage logging and the token
+budget, which depend on time entries (`CLIENTS-INVOICING.md`).
 
 ## Service user and delegated access
 
@@ -71,23 +72,28 @@ phone / web / email ─► Unsorted ─► dispatcher sorts ─► To Do / Backl
                                needs_review / done / failed
 ```
 
-- **Unsorted.** New tasks from the phone (and later email, see
-  `ROADMAP.md`) arrive with status `Unsorted` and a `source`. The
-  dispatcher sets `areaIds` and `projectId`, moves the status to `To Do`
+- **Unsorted.** A new task with no Area and no project defaults to status
+  `Unsorted`, whatever its `source` (phone, web, and later email — see
+  `ROADMAP.md`). Tasks created by a delegate always get `source: agent`.
+  The dispatcher sets `areaIds` and `projectId`, moves the status to `To Do`
   or `Backlog`, and sets `agentState: queued` when the task is agent work.
 - **`agentState`** is separate from `status`, so the user's Kanban stays
   meaningful to a human. Absent means not agent work.
 - **Claiming.** `POST /tasks/:id/claim` with `{ workerId }` succeeds only
   if the task is still `queued` (a conditional write), so two workers
   can't take the same task. It sets `agentClaimedBy`, `agentClaimedAt`
-  and `agentHeartbeatAt`.
+  and `agentHeartbeatAt`; a task that's no longer queued returns 409.
+  `claimed` can only be set this way, never through a create or update.
 - **Heartbeats.** A running worker calls `POST /tasks/:id/heartbeat`
-  periodically. The dispatcher requeues a claimed or running task whose
-  heartbeat is more than 15 minutes old.
+  periodically, with the same `workerId`; a heartbeat from any other
+  worker returns 409. The dispatcher requeues a claimed or running task
+  whose heartbeat is more than 15 minutes old, by setting `agentState:
+  queued`, which clears the old claim.
 - **Progress.** `POST /tasks/:id/updates` appends a `TASK_UPDATE`
   (`kind`: progress / result / error). This is the progress log shown on
   the phone. It is its own entity rather than a list on the task, so a
-  long log can't approach DynamoDB's 400 KB item limit.
+  long log can't approach DynamoDB's 400 KB item limit. Posting an update
+  also bumps the task's `updatedAt`, so polling clients see progress.
 - **Polling.** `GET /tasks` takes `status`, `agentState` and
   `updatedSince` filters, applied in the Lambda over the user's task
   items. No new index: at personal scale a partition query is cheap, and

@@ -23,4 +23,8 @@ export const sortKeys = {
   priorityLevel: new SortKey("PRIORITY_LEVEL#"),
   project: new SortKey("PROJECT#"),
   task: new SortKey("TASK#"),
+  // TASK_UPDATE#<taskId>#<timestamp>, so one task's updates share a prefix
+  // and sort by time. "TASK_UPDATE#" doesn't begin with "TASK#", so task
+  // queries never pick these up.
+  taskUpdate: new SortKey("TASK_UPDATE#"),
 } as const;
